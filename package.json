@@ -74,13 +74,13 @@
     },
     "win": {
       "icon": "resources/icon.ico",
-      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "artifactName": "${productName}-${version}-Setup.${ext}",
       "target": [
         "nsis"
       ]
     },
     "nsis": {
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-${version}-Setup.${ext}"
     },
     "linux": {
       "icon": "resources/icon.png",
