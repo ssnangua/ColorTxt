@@ -1,0 +1,385 @@
+:root {
+  color-scheme: light;
+  --bg: #f8f8f8;
+  --reader-bg: #f4ead7;
+  --panel: #f3f3f3;
+  --border: #d4d4d4;
+  --fg: #333333;
+  --muted: #6b6b6b;
+  --secondary: #909399;
+  --accent: #409eff;
+  --accent-hover: #79bbff;
+  --btn-bg: #ffffff;
+  --control-bg: #ffffff;
+  --scrollbar-track: #f3f3f3;
+  --scrollbar-thumb: #c8c8c8;
+  --scrollbar-thumb-hover: #b5b5b5;
+  --tab-fg: rgba(31, 31, 31, 0.7);
+  --tab-fg-hover: rgba(31, 31, 31, 1);
+  --tab-fg-active: rgba(31, 31, 31, 1);
+  --tab-underline: #409eff;
+  --icon-btn-fg: #1e1e1e;
+  --icon-btn-bg-hover: #e4e4e4;
+  --icon-btn-bg-active: #e4e4e4;
+  --list-item-fg: #3b3b3b;
+  --list-item-bg-hover: #f2f2f2;
+  --list-item-fg-active: #000000;
+  --list-item-bg-active: #e4e6f1;
+
+  --primary: #409eff;
+  --primary-bg: #ecf5ff;
+  --primary-border: #daedff;
+  --primary-hover: #79bbff;
+
+  --success: #67c23a;
+  --success-bg: #f0f9eb;
+  --success-border: #e2f3d9;
+  --success-hover: #95d475;
+
+  --info: #909399;
+  --info-bg: #f4f4f5;
+  --info-border: #eaeaec;
+  --info-hover: #b1b3b8;
+
+  --warning: #e6a23c;
+  --warning-bg: #fdf6ec;
+  --warning-border: #faedd9;
+  --warning-hover: #eebe77;
+
+  --danger: #f56c6c;
+  --danger-bg: #fef0f0;
+  --danger-border: #fde3e3;
+  --danger-hover: #f89898;
+
+  --input-bg: #ffffff;
+
+  /** SwitchToggle 未勾选时轨道背景 */
+  --switch-track-off-bg: #dcdfe6;
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg: #181818;
+  --reader-bg: #1e1e1e;
+  --panel: #252526;
+  --border: #333333;
+  --fg: #d4d4d4;
+  --muted: #9da0a4;
+  --secondary: #a3a6ad;
+  --accent: #409eff;
+  --accent-hover: #3375b9;
+  --btn-bg: #141414;
+  --control-bg: #252526;
+  --scrollbar-track: #252526;
+  --scrollbar-thumb: #424242;
+  --scrollbar-thumb-hover: #4f4f4f;
+  --tab-fg: rgba(215, 215, 215, 0.7);
+  --tab-fg-hover: rgba(215, 215, 215, 1);
+  --tab-fg-active: rgba(215, 215, 215, 1);
+  --tab-underline: #0078d4;
+  --icon-btn-fg: #cccccc;
+  --icon-btn-bg-hover: #2d2e2e;
+  --icon-btn-bg-active: #2d2e2e;
+  --list-item-fg: #cccccc;
+  --list-item-bg-hover: #2a2d2e;
+  --list-item-fg-active: #ffffff;
+  --list-item-bg-active: #37373d;
+
+  --primary: #409eff;
+  --primary-bg: #18222b;
+  --primary-border: #1d2f42;
+  --primary-hover: #3375b9;
+
+  --success: #67c23a;
+  --success-bg: #1c2518;
+  --success-border: #25361c;
+  --success-hover: #4e8e2f;
+
+  --info: #909399;
+  --info-bg: #202121;
+  --info-border: #2c2c2e;
+  --info-hover: #6b6d71;
+
+  --warning: #e6a23c;
+  --warning-bg: #292218;
+  --warning-border: #3d2f1c;
+  --warning-hover: #a77730;
+
+  --danger: #f56c6c;
+  --danger-bg: #2a1d1d;
+  --danger-border: #402626;
+  --danger-hover: #b25252;
+
+  --input-bg: #1e1e1e;
+
+  --switch-track-off-bg: #4c4d4f;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Helvetica,
+    Arial,
+    "Apple Color Emoji",
+    "Segoe UI Emoji";
+  overflow: hidden;
+}
+
+/* 滚动条样式 */
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 8px;
+  border: 2px solid var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* 侧栏列表：列表区与右缘固定间距（有无滚动条一致）；滚动条仍在侧栏最右侧 */
+.sidebar .virtualList-scroll.sidebarList {
+  padding-right: 6px;
+}
+
+/* 侧栏列表滚动条贴右缘：滑块去掉右侧内凹描边（全局 thumb 有 2px 边框） */
+.sidebar .virtualList-scroll.sidebarList::-webkit-scrollbar-thumb {
+  border-right-width: 0;
+}
+
+/* 按钮样式 */
+.btn {
+  background: var(--btn-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: 0.1s;
+}
+.btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.btn[size="large"] {
+  padding: 6px 14px;
+  font-size: 14px;
+}
+.btn.primary {
+  background: var(--accent);
+  color: white;
+  border: none;
+}
+.btn.primary:hover {
+  background: var(--accent-hover);
+}
+.btn.success {
+  background: var(--success);
+  color: white;
+  border: none;
+}
+.btn.success:hover {
+  background: var(--success-hover);
+}
+.btn.info {
+  background: var(--info);
+  color: white;
+  border: none;
+}
+.btn.info:hover {
+  background: var(--info-hover);
+}
+.btn.warning {
+  background: var(--warning);
+  color: white;
+  border: none;
+}
+.btn.warning:hover {
+  background: var(--warning-hover);
+}
+.btn.danger {
+  background: var(--danger);
+  color: white;
+  border: none;
+}
+.btn.danger:hover {
+  background: var(--danger-hover);
+}
+
+button {
+  outline: none;
+}
+
+button.link {
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+}
+
+button.link:not(:disabled):hover {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+button.link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.link.danger,
+button.link.hoverDanger:not(:disabled):hover {
+  color: var(--danger);
+}
+
+button.link.danger:not(:disabled):hover {
+  color: var(--danger-hover);
+}
+
+/* 复选框样式 */
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.checkbox input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--control-bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.checkbox input::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform 0.12s ease-in-out;
+}
+
+.checkbox input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox input:checked::after {
+  transform: rotate(45deg) scale(1) translate(-1px, -1px);
+}
+
+/* 键盘样式 */
+code,
+kbd,
+.tag {
+  display: inline-block;
+  position: relative;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1;
+}
+code,
+kbd {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}
+code {
+  margin: 0 2px;
+}
+kbd {
+  border-radius: 6px;
+}
+.tag {
+  color: var(--info);
+  background: var(--info-bg);
+  border-color: var(--info-border);
+}
+.tag.success {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+input,
+textarea {
+  outline: none;
+}
+
+input:is([type="text"], [type="search"]),
+textarea {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+input:is([type="text"], [type="search"]) {
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+textarea {
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+input:is([type="text"], [type="search"])::placeholder,
+textarea::placeholder {
+  color: var(--secondary);
+}
+
+input:is([type="text"], [type="search"]):focus,
+textarea:focus {
+  border-color: var(--accent);
+}

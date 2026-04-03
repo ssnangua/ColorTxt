@@ -1,0 +1,199 @@
+.app {
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  position: relative;
+}
+
+.app.fullscreen {
+  display: flex;
+}
+
+/* 全屏阅读：鼠标静止一段时间后隐藏系统光标（子元素如 Monaco 可能自带 cursor，需通配覆盖） */
+.app.fullscreen.fullscreen--cursorHidden,
+.app.fullscreen.fullscreen--cursorHidden * {
+  cursor: none !important;
+}
+
+.fullscreenTip {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  opacity: 1;
+  transition: opacity 250ms ease;
+}
+
+.fullscreenTip.fading {
+  opacity: 0;
+}
+
+.appHeaderWrap {
+  flex: 0 0 auto;
+}
+
+.app.fullscreen .appHeaderWrap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  animation: fullscreenHeaderIn 140ms ease-out;
+  z-index: 3500;
+}
+
+.appFooterWrap {
+  flex: 0 0 auto;
+}
+
+.app.fullscreen .appFooterWrap {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg);
+  animation: fullscreenFooterIn 140ms ease-out;
+  z-index: 3400;
+}
+
+.sidebarPaneWrap {
+  flex: 0 0 auto;
+  height: 100%;
+  min-width: 0;
+}
+
+.sidebarPaneWrap--fullscreen {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: visible; /* 右缘拖条略伸出，且子节点 absolute 不被裁切 */
+  box-shadow: 6px 0 28px rgba(0, 0, 0, 0.45);
+  animation: fullscreenSidebarIn 180ms ease-out;
+}
+
+.layout {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  /* overflow: hidden; */
+}
+
+.app.fullscreen .layout {
+  background: var(--reader-bg);
+}
+
+/* 全屏时将 Monaco 纵向滚动条与概览尺固定到窗口最右侧 */
+.app.fullscreen :deep(.readerPane .monaco-editor .decorationsOverviewRuler),
+.app.fullscreen :deep(.readerPane .monaco-editor .scrollbar.vertical) {
+  position: fixed !important;
+  right: 0 !important;
+}
+
+.readerPaneWrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.readerPane {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.readerIdleHint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  padding: 24px;
+  font-size: 12px;
+  color: var(--secondary);
+  text-align: center;
+}
+
+.resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1000;
+  width: 6px;
+  margin-left: 0;
+  cursor: col-resize;
+}
+
+.resizer:hover {
+  background: var(--accent);
+}
+
+/* 全屏侧栏拖条在容器内，与指针同处于侧栏子树，移入拖条不会触发 mouseleave */
+.resizer.resizer--fullscreenSidebar {
+  position: absolute;
+  left: auto;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+}
+
+@keyframes fullscreenSidebarIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fullscreenHeaderIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fullscreenFooterIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

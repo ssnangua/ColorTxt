@@ -1,0 +1,97 @@
+{
+  "name": "colortxt",
+  "private": true,
+  "version": "1.0.0",
+  "description": "一款会给内容上色的本地 TXT 小说阅读器，带给你不一样的阅读体验！",
+  "type": "module",
+  "main": "dist/main/index.js",
+  "author": "kainanhong@gmail.com",
+  "homepage": "https://github.com/ssnangua/ColorTxt",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build && electron-builder --publish never",
+    "preview": "electron-vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "echo \"(no lint configured)\"",
+    "release": "electron-vite build && electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3",
+    "font-list": "^2.0.2",
+    "iconv-lite": "^0.7.2",
+    "jschardet": "^3.1.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "electron": "^35.1.4",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^3.0.0",
+    "monaco-editor": "^0.55.1",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.3",
+    "vite-plugin-monaco-editor": "^1.1.0",
+    "vue": "^3.5.31",
+    "vue-tsc": "^2.2.8"
+  },
+  "build": {
+    "appId": "com.ssnangua.colortxt",
+    "productName": "彩读",
+    "directories": {
+      "output": "release"
+    },
+    "asar": false,
+    "extraResources": [
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "resources/icon.ico",
+        "to": "icon.ico"
+      }
+    ],
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "txt",
+        "name": "Text Document",
+        "description": "纯文本文件",
+        "mimeType": "text/plain",
+        "role": "Editor"
+      }
+    ],
+    "mac": {
+      "icon": "resources/icon.icns",
+      "entitlements": "resources/entitlements.mac.plist",
+      "entitlementsInherit": "resources/entitlements.mac.plist",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "icon": "resources/icon.png",
+      "target": [
+        "AppImage"
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "ssnangua",
+      "repo": "ColorTxt"
+    }
+  }
+}

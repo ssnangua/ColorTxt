@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Electron / Chromium：JIT 与原生模块加载（公证 / 强化运行时常见组合） -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+	<!-- 访问更新服务器、在线资源 -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- 打开用户选择的 txt 等文件（与 fileAssociations 一致） -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- 下载目录等用户可写位置（可选，便于「另存为」等） -->
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+</dict>
+</plist>
