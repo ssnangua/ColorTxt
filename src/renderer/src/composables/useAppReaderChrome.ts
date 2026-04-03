@@ -12,6 +12,18 @@ import {
 /** 全屏下鼠标静止超过该时间后隐藏光标 */
 const FULLSCREEN_CURSOR_HIDE_IDLE_MS = 2000;
 
+/** 过渡结束后再开始算「可见时长」，避免 macOS 全屏动画期间就把计时耗完 */
+const FULLSCREEN_TIP_MS_BEFORE_FADE = 1000;
+const FULLSCREEN_TIP_FADE_MS = 250;
+
+function fullscreenTipPostTransitionDelayMs(): number {
+  if (typeof navigator === "undefined") return 120;
+  const p = navigator.platform;
+  if (p === "MacIntel" || p === "MacARM") return 480;
+  if (/Mac OS X/i.test(navigator.userAgent)) return 480;
+  return 120;
+}
+
 type ReaderRef = Ref<InstanceType<typeof ReaderMain> | null>;
 
 /** 从 `start` 沿 DOM / ShadowRoot.host 向上，判断是否落在 `panel` 子树内（与 `useAppFullscreenReaderLayout` 侧栏判定一致）。 */
@@ -39,6 +51,7 @@ export function useAppReaderChrome(deps: { readerRef: ReaderRef }) {
   const fullscreenTipFading = ref(false);
   let tipFadeTimer: ReturnType<typeof setTimeout> | null = null;
   let tipHideTimer: ReturnType<typeof setTimeout> | null = null;
+  let tipArmDelayTimer: ReturnType<typeof setTimeout> | null = null;
   const showFullscreenHeader = ref(false);
   const fullscreenHeaderOverlayRef = ref<HTMLElement | null>(null);
   const showFullscreenFooter = ref(false);
@@ -124,29 +137,46 @@ export function useAppReaderChrome(deps: { readerRef: ReaderRef }) {
     },
   );
 
+  function clearFullscreenTipTimers() {
+    if (tipFadeTimer) clearTimeout(tipFadeTimer);
+    if (tipHideTimer) clearTimeout(tipHideTimer);
+    if (tipArmDelayTimer) clearTimeout(tipArmDelayTimer);
+    tipFadeTimer = null;
+    tipHideTimer = null;
+    tipArmDelayTimer = null;
+  }
+
+  function armFullscreenTipHideTimers() {
+    if (!showFullscreenTip.value || !isFullscreenView.value) return;
+    clearFullscreenTipTimers();
+    fullscreenTipFading.value = false;
+    tipFadeTimer = setTimeout(() => {
+      fullscreenTipFading.value = true;
+    }, FULLSCREEN_TIP_MS_BEFORE_FADE);
+    tipHideTimer = setTimeout(() => {
+      showFullscreenTip.value = false;
+      fullscreenTipFading.value = false;
+    }, FULLSCREEN_TIP_MS_BEFORE_FADE + FULLSCREEN_TIP_FADE_MS);
+  }
+
   async function enterOrExitFullscreenView() {
     if (!isFullscreenView.value) {
       isFullscreenView.value = true;
       showFullscreenTip.value = true;
       fullscreenTipFading.value = false;
-
-      if (tipFadeTimer) clearTimeout(tipFadeTimer);
-      if (tipHideTimer) clearTimeout(tipHideTimer);
-
-      tipFadeTimer = setTimeout(() => {
-        fullscreenTipFading.value = true;
-      }, 1000);
-      tipHideTimer = setTimeout(() => {
-        showFullscreenTip.value = false;
-        fullscreenTipFading.value = false;
-      }, 1250);
+      clearFullscreenTipTimers();
 
       try {
         await window.colorTxt.setFullscreen(true);
+        tipArmDelayTimer = setTimeout(() => {
+          tipArmDelayTimer = null;
+          armFullscreenTipHideTimers();
+        }, fullscreenTipPostTransitionDelayMs());
       } catch {
         isFullscreenView.value = false;
         showFullscreenTip.value = false;
         fullscreenTipFading.value = false;
+        clearFullscreenTipTimers();
       }
       return;
     }
@@ -300,15 +330,11 @@ export function useAppReaderChrome(deps: { readerRef: ReaderRef }) {
     showFullscreenHeader.value = false;
     showFullscreenFooter.value = false;
     showFullscreenSidebar.value = false;
-    if (tipFadeTimer) clearTimeout(tipFadeTimer);
-    if (tipHideTimer) clearTimeout(tipHideTimer);
-    tipFadeTimer = null;
-    tipHideTimer = null;
+    clearFullscreenTipTimers();
   }
 
   onBeforeUnmount(() => {
-    if (tipFadeTimer) clearTimeout(tipFadeTimer);
-    if (tipHideTimer) clearTimeout(tipHideTimer);
+    clearFullscreenTipTimers();
     clearFullscreenCursorHideTimer();
   });
 
