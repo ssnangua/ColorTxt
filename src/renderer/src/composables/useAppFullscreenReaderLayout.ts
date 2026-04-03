@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from "vue";
+import { computed, type Ref } from "vue";
 import type ReaderMain from "../components/ReaderMain.vue";
 import {
   maxFullscreenReaderWidthPercent,
@@ -17,8 +17,9 @@ export function useAppFullscreenReaderLayout(deps: {
   readerRef: ReaderRef;
   fullscreenSidebarOverlayRef: Ref<HTMLElement | null>;
   fullscreenReaderWidthPercent: Ref<number>;
+  readerPaneWrapRef: Ref<HTMLElement | null>;
 }) {
-  const readerPaneWrapRef = ref<HTMLElement | null>(null);
+  const readerPaneWrapRef = deps.readerPaneWrapRef;
 
   const fullscreenReaderPaneStyle = computed(() => {
     if (!deps.isFullscreenView.value) return undefined;
@@ -109,7 +110,6 @@ export function useAppFullscreenReaderLayout(deps: {
   }
 
   return {
-    readerPaneWrapRef,
     fullscreenReaderPaneStyle,
     onLayoutMouseDown,
     onLayoutWheel,

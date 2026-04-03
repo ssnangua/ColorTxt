@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide, ref } from "vue";
+import { computed, provide, ref, useTemplateRef } from "vue";
 import type { ComponentPublicInstance } from "vue";
 import { getChapterMatchRules, type Chapter } from "./chapter";
 import AppHeader, { type RecentFileItem } from "./components/AppHeader.vue";
@@ -198,6 +198,7 @@ const monacoAdvancedWrapping = ref(defaultMonacoAdvancedWrapping);
 /** 全屏时阅读区域宽度（百分比） */
 const fullscreenReaderWidthPercent = ref(defaultFullscreenReaderWidthPercent);
 
+const readerPaneWrapRef = useTemplateRef<HTMLElement>("readerPaneWrapRef");
 const {
   fullscreenReaderPaneStyle,
   onLayoutMouseDown: onFullscreenLayoutMouseDown,
@@ -207,6 +208,7 @@ const {
   readerRef,
   fullscreenSidebarOverlayRef,
   fullscreenReaderWidthPercent,
+  readerPaneWrapRef,
 });
 
 function onLayoutMouseDown(ev: MouseEvent) {
@@ -740,7 +742,11 @@ useAppShellThemeWatch({
       />
     </div>
 
-    <div class="layout" @mousedown="onLayoutMouseDown" @wheel="onLayoutWheel">
+    <div
+      class="layout"
+      @mousedown="onLayoutMouseDown"
+      @wheel.capture="onLayoutWheel"
+    >
       <div
         ref="fullscreenSidebarOverlayRef"
         class="sidebarPaneWrap"
