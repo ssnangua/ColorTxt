@@ -567,8 +567,8 @@ function scrollByPageStep(direction: -1 | 1) {
     e.getOption(monaco.editor.EditorOption.lineHeight),
   );
   const viewportHeight = Math.max(1, e.getLayoutInfo().height);
-  // 预留一行，避免翻屏后阅读点跳得过猛。
-  const step = Math.max(lineHeight, viewportHeight - lineHeight);
+  // 预留两行，避免翻屏后阅读点跳得过猛。
+  const step = Math.max(lineHeight, viewportHeight - lineHeight * 2);
   scrollByDeltaY(direction * step);
 }
 
@@ -799,7 +799,9 @@ onMounted(() => {
     }
     const d1 = e.onDidScrollChange(() => emitProbeLine(true));
     const d2 = e.onDidChangeCursorPosition(() => emitProbeLine(false));
-    const d3 = installReaderScrollKeyHandler(monaco, e);
+    const d3 = installReaderScrollKeyHandler(monaco, e, {
+      onSpacePageDown: () => scrollByPageStep(1),
+    });
     const d4 = e.onContextMenu((mouseEv) => {
       const m = model.value;
       if (!m) return;

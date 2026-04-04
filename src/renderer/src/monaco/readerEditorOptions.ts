@@ -81,6 +81,10 @@ export function buildReaderEditorCreateOptions(
     find: {
       seedSearchStringFromSelection: "selection",
     },
+    quickSuggestions: false,
+    suggestOnTriggerCharacters: false,
+    parameterHints: { enabled: false },
+    wordBasedSuggestions: "off",
     wordWrap: "on",
     wrappingStrategy: wrappingStrategyAdvanced ? "advanced" : "simple",
     smoothScrolling: true,
