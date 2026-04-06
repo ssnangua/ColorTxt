@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import { APP_DISPLAY_NAME } from "@shared/appDisplayName";
+import { APP_DISPLAY_NAME } from "@shared/packageDerived";
 import {
   resolveInitialWindowBounds,
   saveWindowBounds,

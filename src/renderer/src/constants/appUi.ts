@@ -7,11 +7,11 @@ export {
   defaultReaderPaletteLight,
 } from "./readerPalette";
 
-export { APP_DISPLAY_NAME } from "@shared/appDisplayName";
-
-export const GITHUB_REPO_URL = "https://github.com/ssnangua/ColorTxt";
-
-export const GITHUB_RELEASES_LATEST_URL = `${GITHUB_REPO_URL}/releases/latest`;
+export {
+  APP_DISPLAY_NAME,
+  GITHUB_REPO_URL,
+  GITHUB_RELEASES_LATEST_URL,
+} from "@shared/packageDerived";
 
 export const defaultPathText = "拖放目录或 .txt 文件到窗口";
 

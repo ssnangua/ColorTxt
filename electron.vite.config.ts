@@ -9,8 +9,20 @@ const __electronViteConfigDir = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = resolve(__electronViteConfigDir, "package.json");
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as {
   name?: string;
+  homepage?: string;
   build?: { productName?: string };
 };
+
+const DEFAULT_GITHUB_REPO_URL = "https://github.com/ssnangua/ColorTxt";
+
+function readPackageGithubRepoUrl(): string {
+  const hp =
+    typeof packageJson.homepage === "string"
+      ? packageJson.homepage.trim()
+      : "";
+  const base = hp || DEFAULT_GITHUB_REPO_URL;
+  return base.replace(/\/+$/, "");
+}
 
 function readPackageDisplayName(): string {
   const fromBuild =
@@ -25,6 +37,9 @@ function readPackageDisplayName(): string {
 
 const APP_DISPLAY_NAME_LITERAL = readPackageDisplayName();
 const APP_DISPLAY_NAME_JSON = JSON.stringify(APP_DISPLAY_NAME_LITERAL);
+
+const GITHUB_REPO_URL_LITERAL = readPackageGithubRepoUrl();
+const GITHUB_REPO_URL_JSON = JSON.stringify(GITHUB_REPO_URL_LITERAL);
 
 const sharedResolveAlias = {
   "@shared": resolve(__electronViteConfigDir, "src/shared"),
@@ -45,6 +60,7 @@ export default defineConfig({
     },
     define: {
       __APP_DISPLAY_NAME__: APP_DISPLAY_NAME_JSON,
+      __GITHUB_REPO_URL__: GITHUB_REPO_URL_JSON,
     },
     build: {
       outDir: "dist/main",
@@ -80,6 +96,7 @@ export default defineConfig({
     },
     define: {
       __APP_DISPLAY_NAME__: APP_DISPLAY_NAME_JSON,
+      __GITHUB_REPO_URL__: GITHUB_REPO_URL_JSON,
     },
     plugins: [
       {

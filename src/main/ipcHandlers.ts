@@ -13,7 +13,7 @@ import path from "node:path";
 import { getFonts } from "font-list";
 import iconv from "iconv-lite";
 import jschardet from "jschardet";
-import { APP_DISPLAY_NAME } from "@shared/appDisplayName";
+import { APP_DISPLAY_NAME } from "@shared/packageDerived";
 import type { CreateMainWindow } from "./windowFactory";
 import {
   getToggleVisibilityShortcut,
