@@ -122,7 +122,7 @@ export const SHORTCUT_ACTIONS: ShortcutActionDef[] = [
   {
     id: "toggleAllWindowsVisibility",
     scope: "global",
-    desc: "（全局）全部窗口显示/隐藏",
+    desc: "（全局）显示/隐藏阅读器",
     handlerKey: "toggleAllWindowsVisibility",
   },
 ];

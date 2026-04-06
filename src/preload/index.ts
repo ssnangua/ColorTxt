@@ -158,6 +158,8 @@ const api = {
   },
   isPackaged: () =>
     ipcRenderer.invoke("app:isPackaged") as Promise<boolean>,
+  isWindowsPortable: () =>
+    ipcRenderer.invoke("app:isWindowsPortable") as Promise<boolean>,
   checkForUpdates: () =>
     ipcRenderer.invoke("updater:check") as Promise<
       | { skipped: true }

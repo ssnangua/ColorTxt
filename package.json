@@ -75,13 +75,19 @@
     },
     "win": {
       "icon": "resources/icon.ico",
-      "artifactName": "${productName}-${version}-Setup.${ext}",
+      "artifactName": "${productName}-${version}.${ext}",
       "target": [
-        "nsis"
+        "nsis",
+        "portable"
       ]
     },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}"
+    },
     "nsis": {
-      "artifactName": "${productName}-${version}-Setup.${ext}"
+      "artifactName": "${productName}-${version}-Setup.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "linux": {
       "icon": "resources/icon.png",

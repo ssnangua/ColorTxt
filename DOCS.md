@@ -195,7 +195,7 @@ src/
 **`globalShortcuts.ts`**
 
 - 集中注册 / 注销主进程 `globalShortcut`；后续新增系统级快捷键时在本文件扩展 `registerGlobalShortcuts` / `unregisterGlobalShortcuts` 即可。
-- **全部窗口显隐**：默认 accelerator 为 **Control** + **\`（反引号键）**（`DEFAULT_TOGGLE_VISIBILITY_ACCELERATOR`；macOS 亦为 **Control** 而非 Cmd）在系统范围内触发；用户可在快捷键面板中修改，由 `setToggleVisibilityShortcut` 更新 `currentToggleVisibilityAccelerator` 并重新注册。
+- **阅读器显隐**：默认 accelerator 为 **Control** + **\`（反引号键）**（`DEFAULT_TOGGLE_VISIBILITY_ACCELERATOR`；macOS 亦为 **Control** 而非 Cmd）在系统范围内触发；用户可在快捷键面板中修改，由 `setToggleVisibilityShortcut` 更新 `currentToggleVisibilityAccelerator` 并重新注册。
 - **录制快捷键时临时注销**：`suspendGlobalShortcutsForRecording` / `resumeGlobalShortcutsAfterRecording` 在打开编辑弹层时注销当前全局热键、关闭后 `registerGlobalShortcuts()` 恢复，避免「录制组合键」与「已注册的全局热键」冲突。
 - **校验与设置**：`validateGlobalShortcut` 用临时注册探测是否可用；`setToggleVisibilityShortcut` 失败时回滚到旧 accelerator。
 - **单一状态位**：主进程用 `allWindowsStealthHidden` 维护两种模式：
@@ -350,7 +350,7 @@ src/
 - **还原默认**：`ShortcutPanel` 中「全部还原默认」将 `shortcutRegistry` 的默认表写回并持久化（与 `App.vue` / `useAppPersistence` 联动）。
 - **冲突与校验**：多个窗口级动作绑定同一快捷键时，由 `shortcutUtils.collectShortcutConflicts` 在确认前提示；**全局显隐**另须经主进程 `validateGlobalShortcut`（临时 `globalShortcut.register` 探测系统是否允许）。
 - **窗口级**：`shortcutService.ts` 在 `window` 上监听 `keydown`，将事件转为规范化快捷键并与当前 `ShortcutBindingMap` 比较；`useAppWindowBindings` 注入 `shortcutBindings` ref，并在有模态层时跳过（与 `modalStack` 配合）。
-- **全局级（仅「全部窗口显隐」）**：主进程 `globalShortcuts.ts` 注册 `globalShortcut`；渲染进程保存或校验时通过 `window.colorTxt.validateGlobalShortcut` / `setGlobalShortcut`（IPC 名 `shortcut:validateGlobalToggle` / `shortcut:setGlobalToggle`）与主进程同步；详见上文 **`globalShortcuts.ts`**。
+- **全局级（仅「阅读器显隐」）**：主进程 `globalShortcuts.ts` 注册 `globalShortcut`；渲染进程保存或校验时通过 `window.colorTxt.validateGlobalShortcut` / `setGlobalShortcut`（IPC 名 `shortcut:validateGlobalToggle` / `shortcut:setGlobalToggle`）与主进程同步；详见上文 **`globalShortcuts.ts`**。
 - **录制与 IME**：编辑弹层打开时主进程 `suspendGlobalShortcutsForRecording`，关闭时 `resume`，避免录制时触发已注册的全局热键。录制界面不用 `<input>`，而用可聚焦的 `div` 只展示规范化快捷键，并加 CSS 闪烁光标；`shortcutUtils.keyboardEventToAccelerator` 优先用 **`KeyboardEvent.code`**（物理键位）解析主键，在 `code === 'Unidentified'` 等情况下回退 **`keyCode`**，最后才用 `key`；避免 `Ctrl+Shift+2` 被显示成 `Shift+@`、并忽略 `Process` / `Dead` / `Unidentified` 与 `isComposing` 等与 IME 相关的无效键。
 
 ## 数据存储说明

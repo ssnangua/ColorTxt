@@ -7,6 +7,11 @@ const require = createRequire(import.meta.url);
 const { autoUpdater } =
   require("electron-updater") as typeof import("electron-updater");
 
+/** electron-builder 便携版启动器会注入，见 app-builder-lib portable.nsi */
+function isWindowsPortableBuild(): boolean {
+  return process.platform === "win32" && !!process.env.PORTABLE_EXECUTABLE_DIR;
+}
+
 function broadcast(channel: string, payload?: unknown) {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send(channel, payload);
@@ -15,6 +20,7 @@ function broadcast(channel: string, payload?: unknown) {
 
 export function registerUpdaterIpc() {
   ipcMain.handle("app:isPackaged", () => app.isPackaged);
+  ipcMain.handle("app:isWindowsPortable", () => isWindowsPortableBuild());
 
   ipcMain.handle("updater:check", async () => {
     if (!app.isPackaged) {
@@ -35,6 +41,12 @@ export function registerUpdaterIpc() {
     if (!app.isPackaged) {
       return { skipped: true as const };
     }
+    if (isWindowsPortableBuild()) {
+      return {
+        ok: false as const,
+        message: "便携版不支持应用内下载，请到发布页下载新版本。",
+      };
+    }
     try {
       await autoUpdater.downloadUpdate();
       return { ok: true as const };
@@ -47,7 +59,7 @@ export function registerUpdaterIpc() {
   });
 
   ipcMain.handle("updater:quitAndInstall", () => {
-    if (!app.isPackaged) return false;
+    if (!app.isPackaged || isWindowsPortableBuild()) return false;
     autoUpdater.quitAndInstall(false, true);
     return true;
   });

@@ -24,6 +24,13 @@ const isMac = computed(() =>
   /mac|iphone|ipad|ipod/i.test(navigator.platform || ""),
 );
 
+/** Windows 便携版（electron-builder portable）无应用内安装，与 macOS 一样引导至发布页 */
+const isWinPortable = ref(false);
+
+const useReleasePageForUpdate = computed(
+  () => isMac.value || isWinPortable.value,
+);
+
 function closeUpdateReadyModal() {
   showUpdateReadyModal.value = false;
 }
@@ -36,13 +43,13 @@ function closeUpdateAvailableModal() {
   showUpdateAvailableModal.value = false;
 }
 
-function openMacReleaseDownload() {
+function openReleaseDownloadPage() {
   void window.colorTxt.openExternal(GITHUB_RELEASES_LATEST_URL);
 }
 
 async function startDownloadUpdate() {
-  if (isMac.value) {
-    openMacReleaseDownload();
+  if (useReleasePageForUpdate.value) {
+    openReleaseDownloadPage();
     return;
   }
   showUpdateAvailableModal.value = false;
@@ -82,6 +89,7 @@ function confirmQuitAndInstall() {
 
 async function checkForUpdates() {
   showUpdateCheckingModal.value = true;
+  isWinPortable.value = await window.colorTxt.isWindowsPortable();
   const isPackaged = await window.colorTxt.isPackaged();
   if (!isPackaged) {
     showUpdateCheckingModal.value = false;
@@ -110,6 +118,9 @@ async function checkForUpdates() {
 const unsubscribers: Array<() => void> = [];
 
 onMounted(() => {
+  void window.colorTxt.isWindowsPortable().then((v) => {
+    isWinPortable.value = v;
+  });
   unsubscribers.push(
     window.colorTxt.onUpdaterUpdateAvailable((payload) => {
       if (!pendingManualUpdateCheck.value) return;
@@ -131,8 +142,7 @@ onMounted(() => {
   );
   unsubscribers.push(
     window.colorTxt.onUpdaterDownloadProgress((payload) => {
-      // macOS 当前采用手动安装更新，不会进入下载流程
-      if (isMac.value) return;
+      if (useReleasePageForUpdate.value) return;
       if (!awaitingUpdateDownload.value) return;
       updateDownloadPercent.value = Math.min(
         100,
@@ -163,8 +173,7 @@ onMounted(() => {
   );
   unsubscribers.push(
     window.colorTxt.onUpdaterUpdateDownloaded((payload) => {
-      // macOS 当前采用手动安装更新，不展示“下载完成/退出安装”弹窗
-      if (isMac.value) return;
+      if (useReleasePageForUpdate.value) return;
       pendingManualUpdateCheck.value = false;
       awaitingUpdateDownload.value = false;
       showUpdateDownloadingModal.value = false;
@@ -200,6 +209,9 @@ defineExpose({ checkForUpdates });
     <p class="updateModalText">
       检测到新版本 {{ updateAvailableVersion }}，
       <template v-if="isMac">可前往下载安装。</template>
+      <template v-else-if="isWinPortable"
+        >您当前使用的是便携版，不支持应用内更新，请前往下载页面获取新版本（带 Portable 后缀的包）。</template
+      >
       <template v-else>是否下载更新？</template>
     </p>
     <template #footer>
@@ -218,7 +230,7 @@ defineExpose({ checkForUpdates });
           size="large"
           @click="startDownloadUpdate"
         >
-          <template v-if="isMac">打开下载页</template>
+          <template v-if="useReleasePageForUpdate">打开下载页</template>
           <template v-else>下载</template>
         </button>
       </div>
@@ -226,7 +238,7 @@ defineExpose({ checkForUpdates });
   </AppModal>
 
   <AppModal
-    v-if="!isMac"
+    v-if="!useReleasePageForUpdate"
     v-model="showUpdateDownloadingModal"
     title="正在下载更新"
     max-width="400px"
@@ -261,7 +273,7 @@ defineExpose({ checkForUpdates });
   </AppModal>
 
   <AppModal
-    v-if="!isMac"
+    v-if="!useReleasePageForUpdate"
     v-model="showUpdateReadyModal"
     title="更新已就绪"
     max-width="400px"

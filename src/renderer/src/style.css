@@ -1,7 +1,6 @@
 :root {
   color-scheme: light;
   --bg: #f8f8f8;
-  --reader-bg: #f4ead7;
   --panel: #f3f3f3;
   --border: #d4d4d4;
   --fg: #333333;
@@ -55,12 +54,13 @@
 
   /** SwitchToggle 未勾选时轨道背景 */
   --switch-track-off-bg: #dcdfe6;
+
+  --reader-bg: #f4ead7;
 }
 
 html.dark {
   color-scheme: dark;
   --bg: #181818;
-  --reader-bg: #1e1e1e;
   --panel: #252526;
   --border: #333333;
   --fg: #d4d4d4;
@@ -113,6 +113,8 @@ html.dark {
   --input-bg: #1e1e1e;
 
   --switch-track-off-bg: #4c4d4f;
+
+  --reader-bg: #1e1e1e;
 }
 
 html,
