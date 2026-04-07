@@ -49,6 +49,7 @@ import {
   recentFilesKey,
   sessionKey,
   skipUnloadPersistenceSessionKey,
+  type ReaderSurfacePalette,
 } from "../constants/appUi";
 import type { ShortcutBindingMap } from "../services/shortcutRegistry";
 import { mergeShortcutBindings } from "../services/shortcutUtils";
@@ -89,6 +90,8 @@ export function useAppPersistence(deps: {
   fileMetaRecords: Ref<FileMetaRecord[]>;
   shortcutBindings: Ref<ShortcutBindingMap>;
   defaultShortcutBindings: ShortcutBindingMap;
+  readerPaletteOverridesLight: Ref<Partial<ReaderSurfacePalette>>;
+  readerPaletteOverridesDark: Ref<Partial<ReaderSurfacePalette>>;
 }) {
   const settingsLoaded = ref(false);
 
@@ -426,6 +429,13 @@ export function useAppPersistence(deps: {
       data.shortcutBindings,
     );
 
+    deps.readerPaletteOverridesLight.value = data.readerPaletteOverridesLight
+      ? { ...data.readerPaletteOverridesLight }
+      : {};
+    deps.readerPaletteOverridesDark.value = data.readerPaletteOverridesDark
+      ? { ...data.readerPaletteOverridesDark }
+      : {};
+
     const normalizedRules = normalizeLoadedChapterRules(data.chapterRules);
     if (normalizedRules) {
       try {
@@ -457,6 +467,14 @@ export function useAppPersistence(deps: {
       monacoAdvancedWrapping: deps.monacoAdvancedWrapping.value,
       fullscreenReaderWidthPercent: deps.fullscreenReaderWidthPercent.value,
       shortcutBindings: deps.shortcutBindings.value,
+      readerPaletteOverridesLight:
+        Object.keys(deps.readerPaletteOverridesLight.value).length > 0
+          ? deps.readerPaletteOverridesLight.value
+          : undefined,
+      readerPaletteOverridesDark:
+        Object.keys(deps.readerPaletteOverridesDark.value).length > 0
+          ? deps.readerPaletteOverridesDark.value
+          : undefined,
     });
   }
 

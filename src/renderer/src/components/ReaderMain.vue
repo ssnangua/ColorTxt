@@ -31,6 +31,9 @@ import {
   defaultMonacoAdvancedWrapping,
   defaultMonacoCustomHighlight,
   defaultReaderLineHeightMultiple,
+  defaultReaderPaletteDark,
+  defaultReaderPaletteLight,
+  type ReaderSurfacePalette,
 } from "../constants/appUi";
 import { floorReadingPercentFromScrollRatio } from "../utils/format";
 
@@ -80,12 +83,17 @@ const props = withDefaults(
     monacoAdvancedWrapping?: boolean;
     /** 主进程流式读盘期间为 true；关闭 sticky 避免旧文件黏性标题在加载全程残留 */
     streamLoading?: boolean;
+    /** 合并用户覆盖后的阅读器表面色（亮色 / 暗色） */
+    readerSurfaceLight?: ReaderSurfacePalette;
+    readerSurfaceDark?: ReaderSurfacePalette;
   }>(),
   {
     monacoCustomHighlight: defaultMonacoCustomHighlight,
     compressBlankLines: defaultCompressBlankLines,
     monacoAdvancedWrapping: defaultMonacoAdvancedWrapping,
     streamLoading: false,
+    readerSurfaceLight: () => ({ ...defaultReaderPaletteLight }),
+    readerSurfaceDark: () => ({ ...defaultReaderPaletteDark }),
   },
 );
 
@@ -716,16 +724,33 @@ defineExpose({
   restoreEditorViewState,
 });
 
+function applyReaderSyntaxFromProps() {
+  setReaderSyntaxHighlightEnabled(
+    monaco,
+    props.monacoCustomHighlight,
+    props.readerSurfaceLight,
+    props.readerSurfaceDark,
+  );
+  setTheme(lastAppThemeName);
+}
+
 watch(
   () => props.monacoCustomHighlight,
-  (enabled) => {
-    setReaderSyntaxHighlightEnabled(monaco, enabled);
-    setTheme(lastAppThemeName);
+  () => {
+    applyReaderSyntaxFromProps();
   },
 );
 
+watch(
+  () => [props.readerSurfaceLight, props.readerSurfaceDark] as const,
+  () => {
+    applyReaderSyntaxFromProps();
+  },
+  { deep: true },
+);
+
 onMounted(() => {
-  setReaderSyntaxHighlightEnabled(monaco, props.monacoCustomHighlight);
+  applyReaderSyntaxFromProps();
 
   // Register language + providers once (across HMR).
   const g = globalThis as any;

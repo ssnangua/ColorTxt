@@ -5,11 +5,13 @@ import { bookmarkNoteInputRefKey } from "../injectionKeys";
 import type { FileBookmarkItem } from "../stores/fileMetaStore";
 import AboutPanel from "./AboutPanel.vue";
 import AppModal from "./AppModal.vue";
+import ColorSchemePanel from "./ColorSchemePanel.vue";
 import AppUpdateFlow from "./AppUpdateFlow.vue";
 import ChapterRulePanel from "./ChapterRulePanel.vue";
 import SettingsPanel, { type SettingsApplyPayload } from "./SettingsPanel.vue";
 import ShortcutPanel from "./ShortcutPanel.vue";
 import type { ShortcutBindingMap } from "../services/shortcutRegistry";
+import type { ReaderSurfacePalette } from "../constants/appUi";
 
 const bookmarkNoteInputRef = inject(bookmarkNoteInputRefKey)!;
 
@@ -28,6 +30,10 @@ defineProps<{
   dirListCurrentName: string;
   shortcutBindings: ShortcutBindingMap;
   defaultShortcutBindings: ShortcutBindingMap;
+  currentTheme: string;
+  readerSurfaceLight: ReaderSurfacePalette;
+  readerSurfaceDark: ReaderSurfacePalette;
+  monacoFontFamily: string;
 }>();
 
 const emit = defineEmits<{
@@ -36,6 +42,9 @@ const emit = defineEmits<{
   confirmAddBookmark: [];
   confirmRemoveActiveBookmark: [];
   applyShortcutBindings: [payload: ShortcutBindingMap];
+  applyReaderPalettes: [
+    payload: { light: ReaderSurfacePalette; dark: ReaderSurfacePalette },
+  ];
 }>();
 
 const showAboutPanel = defineModel<boolean>("showAboutPanel", {
@@ -48,6 +57,9 @@ const showSettingsPanel = defineModel<boolean>("showSettingsPanel", {
   default: false,
 });
 const showChapterRulePanel = defineModel<boolean>("showChapterRulePanel", {
+  default: false,
+});
+const showColorSchemePanel = defineModel<boolean>("showColorSchemePanel", {
   default: false,
 });
 const addBookmarkOpen = defineModel<boolean>("addBookmarkOpen", {
@@ -106,6 +118,15 @@ function onBookmarkNoteKeydown(e: KeyboardEvent) {
     :rules="chapterRules"
     :error-text="chapterRuleErrorText"
     @apply="emit('applyChapterRules', $event)"
+  />
+
+  <ColorSchemePanel
+    v-model="showColorSchemePanel"
+    :current-theme="currentTheme"
+    :reader-surface-light="readerSurfaceLight"
+    :reader-surface-dark="readerSurfaceDark"
+    :monaco-font-family="monacoFontFamily"
+    @apply-reader-palettes="emit('applyReaderPalettes', $event)"
   />
 
   <AppModal

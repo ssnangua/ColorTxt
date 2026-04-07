@@ -19,6 +19,7 @@ export type ShortcutActionId =
   | "toggleSidebar"
   | "toggleFullscreen"
   | "openSettings"
+  | "openColorScheme"
   | "openNewWindow"
   | "toggleAllWindowsVisibility";
 
@@ -114,6 +115,12 @@ export const SHORTCUT_ACTIONS: ShortcutActionDef[] = [
   },
   { id: "openSettings", scope: "window", desc: "设置", handlerKey: "openSettings" },
   {
+    id: "openColorScheme",
+    scope: "window",
+    desc: "配色",
+    handlerKey: "openColorScheme",
+  },
+  {
     id: "openNewWindow",
     scope: "window",
     desc: "打开新窗口",
@@ -154,6 +161,7 @@ export function createDefaultShortcutBindings(isMac: boolean): ShortcutBindingMa
     toggleSidebar: `${accel}+B`,
     toggleFullscreen: "F11",
     openSettings: "F5",
+    openColorScheme: "F6",
     openNewWindow: `${accel}+Shift+N`,
     toggleAllWindowsVisibility: "Control+`",
   };

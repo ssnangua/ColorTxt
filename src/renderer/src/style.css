@@ -359,6 +359,7 @@ kbd {
 input,
 textarea {
   outline: none;
+  transition: border-color 0.2s;
 }
 
 input:is([type="text"], [type="search"]),

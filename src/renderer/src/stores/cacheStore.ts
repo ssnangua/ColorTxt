@@ -1,6 +1,10 @@
 export type TxtFileItem = { name: string; path: string; size: number };
 
 import type { ChapterMatchRule } from "../chapter";
+import {
+  parseReaderPaletteOverrides,
+  type ReaderSurfacePalette,
+} from "../constants/readerPalette";
 import type { ShortcutActionId } from "../services/shortcutRegistry";
 
 export type PersistedSettingsData = {
@@ -33,6 +37,10 @@ export type PersistedSettingsData = {
   fullscreenReaderWidthPercent?: number;
   /** 用户自定义快捷键（动作ID -> accelerator） */
   shortcutBindings?: Partial<Record<ShortcutActionId, string>>;
+  /** 阅读器表面色用户覆盖（亮色侧） */
+  readerPaletteOverridesLight?: Partial<ReaderSurfacePalette>;
+  /** 阅读器表面色用户覆盖（暗色侧） */
+  readerPaletteOverridesDark?: Partial<ReaderSurfacePalette>;
 };
 
 export type SessionSnapshot = {
@@ -136,6 +144,20 @@ export function loadPersistedSettingsData(
     data.shortcutBindings = obj.shortcutBindings as Partial<
       Record<ShortcutActionId, string>
     >;
+  }
+  if (
+    obj.readerPaletteOverridesLight &&
+    typeof obj.readerPaletteOverridesLight === "object"
+  ) {
+    const p = parseReaderPaletteOverrides(obj.readerPaletteOverridesLight);
+    if (Object.keys(p).length) data.readerPaletteOverridesLight = p;
+  }
+  if (
+    obj.readerPaletteOverridesDark &&
+    typeof obj.readerPaletteOverridesDark === "object"
+  ) {
+    const p = parseReaderPaletteOverrides(obj.readerPaletteOverridesDark);
+    if (Object.keys(p).length) data.readerPaletteOverridesDark = p;
   }
   return data;
 }

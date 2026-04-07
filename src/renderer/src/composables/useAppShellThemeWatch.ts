@@ -3,19 +3,26 @@ import type ReaderMain from "../components/ReaderMain.vue";
 import {
   APP_DISPLAY_NAME,
   applyReaderSurfaceToDocument,
+  type ReaderSurfacePalette,
 } from "../constants/appUi";
 
-function syncAppTheme(theme: string) {
+function syncAppTheme(
+  theme: string,
+  lightPalette: ReaderSurfacePalette,
+  darkPalette: ReaderSurfacePalette,
+) {
   const root = document.documentElement;
   const isDark = theme !== "vs";
   root.classList.toggle("dark", isDark);
   root.style.colorScheme = isDark ? "dark" : "light";
-  applyReaderSurfaceToDocument(theme);
+  applyReaderSurfaceToDocument(theme, lightPalette, darkPalette);
 }
 
 export function useAppShellThemeWatch(deps: {
   currentTheme: Ref<string>;
   readerRef: Ref<InstanceType<typeof ReaderMain> | null>;
+  readerSurfaceLight: Ref<ReaderSurfacePalette>;
+  readerSurfaceDark: Ref<ReaderSurfacePalette>;
   skipNextThemeNativeIpc: Ref<boolean>;
   persistSettings: () => void;
   showChapterCounts: Ref<boolean>;
@@ -24,11 +31,19 @@ export function useAppShellThemeWatch(deps: {
   showFullscreenSidebar: Ref<boolean>;
   pulseChapterListCenter: (smooth: boolean) => void;
 }) {
+  function applyReaderDocumentAndMonaco(theme: string) {
+    syncAppTheme(
+      theme,
+      deps.readerSurfaceLight.value,
+      deps.readerSurfaceDark.value,
+    );
+    deps.readerRef.value?.setTheme(theme);
+  }
+
   watch(
     () => deps.currentTheme.value,
     (theme) => {
-      syncAppTheme(theme);
-      deps.readerRef.value?.setTheme(theme);
+      applyReaderDocumentAndMonaco(theme);
       if (deps.skipNextThemeNativeIpc.value) {
         deps.skipNextThemeNativeIpc.value = false;
       } else {

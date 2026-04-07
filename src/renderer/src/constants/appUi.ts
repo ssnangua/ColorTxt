@@ -5,6 +5,13 @@ export {
   applyReaderSurfaceToDocument,
   defaultReaderPaletteDark,
   defaultReaderPaletteLight,
+  isValidReaderSurfaceHex,
+  mergeReaderSurfacePalette,
+  overridesFromFullPalette,
+  parseReaderPaletteOverrides,
+  READER_SURFACE_KEYS,
+  READER_SURFACE_LABELS,
+  READER_SURFACE_ROW_PAIRS,
 } from "./readerPalette";
 
 export {

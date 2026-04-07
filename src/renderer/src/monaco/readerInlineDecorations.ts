@@ -1,9 +1,5 @@
 import type * as monaco from "monaco-editor";
-import {
-  defaultReaderPaletteDark,
-  defaultReaderPaletteLight,
-  type ReaderSurfacePalette,
-} from "../constants/readerPalette";
+import type { ReaderSurfacePalette } from "../constants/readerPalette";
 import {
   CHAPTER_TITLE_LINE_CLASS,
   type ChapterStickyLine,
@@ -51,18 +47,20 @@ function buildTxtrTokenRules(palette: ReaderSurfacePalette) {
  */
 export function ensureReaderSyntaxThemes(
   monacoApi: typeof import("monaco-editor"),
+  lightPalette: ReaderSurfacePalette,
+  darkPalette: ReaderSurfacePalette,
 ): void {
   const transparent = { "editor.background": EDITOR_BACKGROUND_TRANSPARENT };
   monacoApi.editor.defineTheme("vs-dark", {
     base: "vs-dark",
     inherit: true,
-    rules: buildTxtrTokenRules(defaultReaderPaletteDark),
+    rules: buildTxtrTokenRules(darkPalette),
     colors: transparent,
   });
   monacoApi.editor.defineTheme("vs", {
     base: "vs",
     inherit: true,
-    rules: buildTxtrTokenRules(defaultReaderPaletteLight),
+    rules: buildTxtrTokenRules(lightPalette),
     colors: transparent,
   });
 }
@@ -74,10 +72,12 @@ export function ensureReaderSyntaxThemes(
 export function setReaderSyntaxHighlightEnabled(
   monacoApi: typeof import("monaco-editor"),
   enabled: boolean,
+  lightPalette: ReaderSurfacePalette,
+  darkPalette: ReaderSurfacePalette,
 ): void {
   const transparent = { "editor.background": EDITOR_BACKGROUND_TRANSPARENT };
   if (enabled) {
-    ensureReaderSyntaxThemes(monacoApi);
+    ensureReaderSyntaxThemes(monacoApi, lightPalette, darkPalette);
     return;
   }
   monacoApi.editor.defineTheme("vs-dark", {

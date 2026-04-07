@@ -2,14 +2,38 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import IconButton from "./IconButton.vue";
 import { icons } from "../icons";
+import type { ShortcutBindingMap } from "../services/shortcutRegistry";
+import { acceleratorToDisplayText } from "../services/shortcutUtils";
 
 type RecentFileItem = { path: string; progress?: number };
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     recentFiles?: RecentFileItem[];
+    shortcutBindings: ShortcutBindingMap;
   }>(),
   { recentFiles: () => [] },
+);
+
+const isMacPlatform = computed(() =>
+  /mac|iphone|ipad|ipod/i.test(navigator.platform || ""),
+);
+
+function bindingLabel(accel: string) {
+  return acceleratorToDisplayText(accel, isMacPlatform.value);
+}
+
+const findShortcutLabel = computed(() =>
+  bindingLabel(props.shortcutBindings.toggleFind),
+);
+const settingsShortcutLabel = computed(() =>
+  bindingLabel(props.shortcutBindings.openSettings),
+);
+const newWindowShortcutLabel = computed(() =>
+  bindingLabel(props.shortcutBindings.openNewWindow),
+);
+const colorSchemeShortcutLabel = computed(() =>
+  bindingLabel(props.shortcutBindings.openColorScheme),
 );
 
 const emit = defineEmits<{
@@ -18,6 +42,7 @@ const emit = defineEmits<{
   checkForUpdates: [];
   openShortcuts: [];
   openSettings: [];
+  openColorScheme: [];
   openNewWindow: [];
   openAbout: [];
   quitApp: [];
@@ -28,9 +53,6 @@ const emit = defineEmits<{
 const moreMenuOpen = ref(false);
 const moreMenuRootEl = ref<HTMLElement | null>(null);
 const recentSubOpen = ref(false);
-const accelKey = computed(() =>
-  /mac|iphone|ipad|ipod/i.test(navigator.platform || "") ? "Cmd" : "Ctrl",
-);
 
 function toggleMoreMenu() {
   moreMenuOpen.value = !moreMenuOpen.value;
@@ -115,6 +137,11 @@ function onOpenSettings() {
   emit("openSettings");
 }
 
+function onOpenColorScheme() {
+  closeMoreMenu();
+  emit("openColorScheme");
+}
+
 function onOpenNewWindow() {
   closeMoreMenu();
   emit("openNewWindow");
@@ -150,7 +177,7 @@ onBeforeUnmount(() => {
       <button class="moreMenuItem" role="menuitem" @click="onToggleFind">
         <span class="moreMenuIcon" v-html="icons.find"></span>
         <span class="moreMenuLabel">查找</span>
-        <span class="moreMenuShortcut">{{ accelKey }}+F</span>
+        <span class="moreMenuShortcut">{{ findShortcutLabel }}</span>
       </button>
       <div class="moreMenuDivider" role="separator"></div>
       <div
@@ -219,7 +246,7 @@ onBeforeUnmount(() => {
       <button class="moreMenuItem" role="menuitem" @click="onOpenNewWindow">
         <span class="moreMenuIcon" v-html="icons.newWindow"></span>
         <span class="moreMenuLabel">新窗口</span>
-        <span class="moreMenuShortcut">{{ accelKey }}+Shift+N</span>
+        <span class="moreMenuShortcut">{{ newWindowShortcutLabel }}</span>
       </button>
       <div class="moreMenuDivider" role="separator"></div>
       <button class="moreMenuItem" role="menuitem" @click="onOpenShortcuts">
@@ -229,7 +256,15 @@ onBeforeUnmount(() => {
       <button class="moreMenuItem" role="menuitem" @click="onOpenSettings">
         <span class="moreMenuIcon" v-html="icons.setting"></span>
         <span class="moreMenuLabel">设置</span>
-        <span class="moreMenuShortcut">F5</span>
+        <span class="moreMenuShortcut">{{ settingsShortcutLabel }}</span>
+      </button>
+      <button class="moreMenuItem" role="menuitem" @click="onOpenColorScheme">
+        <span
+          class="moreMenuIcon moreMenuIcon--colorful"
+          v-html="icons.palette"
+        ></span>
+        <span class="moreMenuLabel">配色</span>
+        <span class="moreMenuShortcut">{{ colorSchemeShortcutLabel }}</span>
       </button>
       <button class="moreMenuItem" role="menuitem" @click="onCheckForUpdates">
         <span class="moreMenuIcon" v-html="icons.update"></span>
@@ -396,7 +431,8 @@ onBeforeUnmount(() => {
   display: block;
 }
 
-.moreMenuIcon:not(.moreMenuIcon--github) :deep(path) {
+.moreMenuIcon:not(.moreMenuIcon--github):not(.moreMenuIcon--colorful)
+  :deep(path) {
   fill: currentColor;
 }
 

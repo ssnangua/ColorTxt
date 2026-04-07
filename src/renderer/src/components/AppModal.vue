@@ -10,12 +10,14 @@ const props = withDefaults(
     escClosable?: boolean;
     /** 内容区面板最大宽度，如 520px、800px */
     maxWidth?: string;
+    bodyScroll?: boolean;
   }>(),
   {
     title: "",
     maskClosable: true,
     escClosable: true,
     maxWidth: "520px",
+    bodyScroll: true,
   },
 );
 
@@ -76,7 +78,10 @@ onBeforeUnmount(() => {
         @click.stop
       >
         <h2 v-if="title" :id="titleId" class="appModalTitle">{{ title }}</h2>
-        <div class="appModalBody">
+        <div
+          class="appModalBody"
+          :class="{ 'appModalBody--noScroll': !bodyScroll }"
+        >
           <slot />
         </div>
         <div v-if="slots.footer" class="appModalFooter">
@@ -150,6 +155,12 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.appModalBody--noScroll {
+  overflow: hidden;
 }
 
 .appModalFooter {

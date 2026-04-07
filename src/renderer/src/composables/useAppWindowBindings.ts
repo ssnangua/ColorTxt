@@ -67,6 +67,7 @@ export function useAppWindowBindings(deps: {
   jumpToPrevChapter: () => void;
   jumpToNextChapter: () => void;
   openSettings: () => void;
+  openColorScheme: () => void;
   toggleFind: () => void;
   scrollDownLine: () => void;
   scrollUpLine: () => void;
@@ -158,6 +159,7 @@ export function useAppWindowBindings(deps: {
       bindAppShortcuts(
         {
           openSettings: deps.openSettings,
+          openColorScheme: deps.openColorScheme,
           toggleFullscreen: deps.enterOrExitFullscreenView,
           increaseFontSize: deps.increaseFontSize,
           decreaseFontSize: deps.decreaseFontSize,

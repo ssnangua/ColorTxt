@@ -24,6 +24,7 @@ import { useTxtStreamPipeline } from "./composables/useTxtStreamPipeline";
 import { fileHistoryKey } from "./stores/recentHistoryStore";
 import type { FileMetaRecord } from "./stores/fileMetaStore";
 import {
+  applyReaderSurfaceToDocument,
   defaultCompressBlankKeepOneBlank,
   defaultCompressBlankLines,
   defaultFullscreenReaderWidthPercent,
@@ -33,8 +34,12 @@ import {
   defaultPathText,
   defaultReaderFontSize,
   defaultReaderLineHeightMultiple,
+  defaultReaderPaletteDark,
+  defaultReaderPaletteLight,
   defaultReaderTheme,
   defaultRecentFilesHistoryLimit,
+  mergeReaderSurfacePalette,
+  overridesFromFullPalette,
   defaultRestoreSessionOnStartup,
   defaultShowChapterCounts,
   defaultShowSidebar,
@@ -48,6 +53,7 @@ import {
   minFullscreenReaderWidthPercent,
   minFontSize,
   minLineHeightMultiple,
+  type ReaderSurfacePalette,
 } from "./constants/appUi";
 import { formatCharCount, formatFileSize } from "./utils/format";
 import { READER_EDITOR_DEFAULT_FONT_FAMILY } from "./monaco/readerEditorOptions";
@@ -120,6 +126,7 @@ function setFullscreenFooterOverlayEl(
 const showAboutPanel = ref(false);
 const showShortcutPanel = ref(false);
 const showSettingsPanel = ref(false);
+const showColorSchemePanel = ref(false);
 const appOverlaysRef = ref<InstanceType<typeof AppOverlays> | null>(null);
 const showChapterRulePanel = ref(false);
 const chapterRuleErrorText = ref("");
@@ -197,6 +204,22 @@ const recentFilesHistoryLimit = ref(defaultRecentFilesHistoryLimit);
 const monacoAdvancedWrapping = ref(defaultMonacoAdvancedWrapping);
 /** 全屏时阅读区域宽度（百分比） */
 const fullscreenReaderWidthPercent = ref(defaultFullscreenReaderWidthPercent);
+
+const readerPaletteOverridesLight = ref<Partial<ReaderSurfacePalette>>({});
+const readerPaletteOverridesDark = ref<Partial<ReaderSurfacePalette>>({});
+
+const readerSurfaceLight = computed(() =>
+  mergeReaderSurfacePalette(
+    defaultReaderPaletteLight,
+    readerPaletteOverridesLight.value,
+  ),
+);
+const readerSurfaceDark = computed(() =>
+  mergeReaderSurfacePalette(
+    defaultReaderPaletteDark,
+    readerPaletteOverridesDark.value,
+  ),
+);
 
 const readerPaneWrapRef = useTemplateRef<HTMLElement>("readerPaneWrapRef");
 const {
@@ -277,6 +300,8 @@ const persistence = useAppPersistence({
   fileMetaRecords,
   shortcutBindings,
   defaultShortcutBindings,
+  readerPaletteOverridesLight,
+  readerPaletteOverridesDark,
 });
 const {
   persistSettings,
@@ -527,6 +552,31 @@ function quitApp() {
   window.colorTxt.quitApp();
 }
 
+function refreshReaderSurfaceAfterPaletteChange() {
+  applyReaderSurfaceToDocument(
+    currentTheme.value,
+    readerSurfaceLight.value,
+    readerSurfaceDark.value,
+  );
+  readerRef.value?.setTheme(currentTheme.value);
+}
+
+function onApplyReaderPalettes(payload: {
+  light: ReaderSurfacePalette;
+  dark: ReaderSurfacePalette;
+}) {
+  readerPaletteOverridesLight.value = overridesFromFullPalette(
+    payload.light,
+    defaultReaderPaletteLight,
+  );
+  readerPaletteOverridesDark.value = overridesFromFullPalette(
+    payload.dark,
+    defaultReaderPaletteDark,
+  );
+  persistSettings();
+  refreshReaderSurfaceAfterPaletteChange();
+}
+
 function applySettings(payload: SettingsApplyPayload) {
   const prevCompressBlankKeepOneBlank = compressBlankKeepOneBlank.value;
   compressBlankKeepOneBlank.value = payload.compressBlankKeepOneBlank;
@@ -646,6 +696,9 @@ useAppWindowBindings({
   openSettings: () => {
     showSettingsPanel.value = true;
   },
+  openColorScheme: () => {
+    showColorSchemePanel.value = true;
+  },
   toggleFind: onToggleFind,
   scrollDownLine: () => readerRef.value?.scrollByLineStep?.(1),
   scrollUpLine: () => readerRef.value?.scrollByLineStep?.(-1),
@@ -660,6 +713,8 @@ useAppWindowBindings({
 useAppShellThemeWatch({
   currentTheme,
   readerRef,
+  readerSurfaceLight,
+  readerSurfaceDark,
   skipNextThemeNativeIpc,
   persistSettings,
   showChapterCounts,
@@ -709,6 +764,7 @@ useAppShellThemeWatch({
         :monaco-custom-highlight="monacoCustomHighlight"
         :compress-blank-lines="compressBlankLines"
         :lead-indent-full-width="leadIndentFullWidth"
+        :shortcut-bindings="shortcutBindings"
         @open-file="openFileViaDialog"
         @pin-click="onPinClick"
         @bookmark-click="onBookmarkClick"
@@ -734,6 +790,7 @@ useAppShellThemeWatch({
         @check-for-updates="requestCheckForUpdates"
         @open-shortcuts="showShortcutPanel = true"
         @open-settings="showSettingsPanel = true"
+        @open-color-scheme="showColorSchemePanel = true"
         @open-new-window="openNewWindow"
         @open-recent-file="openRecentFileFromHistory"
         @clear-recent-files="clearRecentFiles"
@@ -811,6 +868,8 @@ useAppShellThemeWatch({
           :compress-blank-lines="compressBlankLines"
           :monaco-advanced-wrapping="monacoAdvancedWrapping"
           :stream-loading="loading"
+          :reader-surface-light="readerSurfaceLight"
+          :reader-surface-dark="readerSurfaceDark"
           @probe-line-change="onProbeLineChange"
           @viewport-top-line-change="onViewportTopLineChange"
           @viewport-end-line-change="onViewportEndLineChange"
@@ -867,6 +926,7 @@ useAppShellThemeWatch({
       v-model:show-about-panel="showAboutPanel"
       v-model:show-shortcut-panel="showShortcutPanel"
       v-model:show-settings-panel="showSettingsPanel"
+      v-model:show-color-scheme-panel="showColorSchemePanel"
       v-model:show-chapter-rule-panel="showChapterRulePanel"
       v-model:add-bookmark-open="addBookmarkOpen"
       v-model:remove-bookmark-open="removeBookmarkOpen"
@@ -885,11 +945,16 @@ useAppShellThemeWatch({
       :dir-list-current-name="dirListCurrentName"
       :shortcut-bindings="shortcutBindings"
       :default-shortcut-bindings="defaultShortcutBindings"
+      :current-theme="currentTheme"
+      :reader-surface-light="readerSurfaceLight"
+      :reader-surface-dark="readerSurfaceDark"
+      :monaco-font-family="monacoFontFamily"
       @apply-settings="applySettings"
       @apply-shortcut-bindings="applyShortcutBindings"
       @apply-chapter-rules="applyChapterMatchRules"
       @confirm-add-bookmark="confirmAddBookmark"
       @confirm-remove-active-bookmark="confirmRemoveActiveBookmark"
+      @apply-reader-palettes="onApplyReaderPalettes"
     />
   </div>
 </template>

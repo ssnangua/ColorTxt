@@ -12,8 +12,8 @@ type PersistedWindowBounds = {
 export const DEFAULT_WINDOW_WIDTH = 1200;
 export const DEFAULT_WINDOW_HEIGHT = 800;
 const WINDOW_BOUNDS_FILE_NAME = "window-bounds.json";
-export const WINDOW_MIN_WIDTH = 900;
-export const WINDOW_MIN_HEIGHT = 600;
+export const WINDOW_MIN_WIDTH = 1000;
+export const WINDOW_MIN_HEIGHT = 680;
 
 function windowBoundsFilePath() {
   return path.join(app.getPath("userData"), WINDOW_BOUNDS_FILE_NAME);

@@ -3,6 +3,7 @@ import IconButton from "./IconButton.vue";
 import FontPicker from "./FontPicker.vue";
 import MoreMenu from "./MoreMenu.vue";
 import { icons } from "../icons";
+import type { ShortcutBindingMap } from "../services/shortcutRegistry";
 
 /** 仅路径；阅读进度由 `file.meta` 提供（菜单侧由父组件合并） */
 export type RecentFileItem = { path: string; progress?: number };
@@ -34,6 +35,8 @@ withDefaults(
     canPin?: boolean;
     bookmarkActive?: boolean;
     canBookmark?: boolean;
+    /** 与快捷键面板、按键处理一致，用于「更多」菜单旁展示的快捷键 */
+    shortcutBindings: ShortcutBindingMap;
   }>(),
   {
     inFullscreen: false,
@@ -65,6 +68,7 @@ const emit = defineEmits<{
   checkForUpdates: [];
   openShortcuts: [];
   openSettings: [];
+  openColorScheme: [];
   openNewWindow: [];
   openAbout: [];
   quitApp: [];
@@ -208,11 +212,13 @@ const emit = defineEmits<{
       />
       <MoreMenu
         :recent-files="recentFiles"
+        :shortcut-bindings="shortcutBindings"
         @toggle-find="emit('toggleFind')"
         @open-github="emit('openGithub')"
         @check-for-updates="emit('checkForUpdates')"
         @open-shortcuts="emit('openShortcuts')"
         @open-settings="emit('openSettings')"
+        @open-color-scheme="emit('openColorScheme')"
         @open-new-window="emit('openNewWindow')"
         @open-about="emit('openAbout')"
         @quit-app="emit('quitApp')"
