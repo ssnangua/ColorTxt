@@ -13,10 +13,21 @@ export type { TxtrMonarchHighlightOptions };
 const PUNCTUATION_CLASS = /[,，.。!！?？:：;；、）\]\}｝】〗》＞>…—\-]/;
 
 /**
- * 拉丁词：ASCII、全角拉丁（U+FF21–FF3A、U+FF41–FF5A）及 Unicode 中标注为拉丁文的字母
- *（含拼音声调 ā/ō/ē/ǎ 等）；允许字母后紧跟结合变音标记（NFC/NFD 均可）。
+ * BMP 拉丁字母：ASCII、全角拉丁、Latin-1 字母段（跳过 × U+00D7、÷ U+00F7）、Latin Extended-A/B（含拼音 ā/ō/ē/ǎ/ǖ 等）。
+ * 不使用 `\p{Script=Latin}`：Monarch 分词所用正则引擎可能不支持 Unicode 属性类，会导致普通英文也无法匹配。
  */
-const LATIN_WORD = /(?:\p{Script=Latin}(?:\p{M})*)+/u;
+const LATIN_LETTERS_BMP =
+  "A-Za-z\\uFF21-\\uFF3A\\uFF41-\\uFF5A" +
+  "\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u00FF" +
+  "\\u0100-\\u017F" +
+  "\\u0180-\\u024F";
+
+/** 结合用变音标记（NFD：`a`+U+0301）；跟在拉丁字母后算同一词 */
+const COMBINING_DIACRITIC_BMP = "\\u0300-\\u036F";
+
+const LATIN_WORD = new RegExp(
+  `(?:[${LATIN_LETTERS_BMP}][${COMBINING_DIACRITIC_BMP}]*)+`,
+);
 
 const NUMBER = /[0-9０-９]+/;
 const SPECIAL_MARKERS = /[·•▪*＊✲❈※☆♡♥○●√✔☑×✘☒]/;
@@ -46,8 +57,7 @@ function innerRestRe(
       ? "《<＜（【〖｛\\[\\(\\{"
       : "";
   return new RegExp(
-    `[^${e}\\r\\n0-9\\p{Script=Latin}${noBracketOpen}]`,
-    "u",
+    `[^${e}\\r\\n0-9${LATIN_LETTERS_BMP}${noBracketOpen}]`,
   );
 }
 
