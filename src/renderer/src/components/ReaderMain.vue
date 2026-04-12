@@ -102,6 +102,10 @@ let imageViewZoneScrollRenderRaf: number | null = null;
 let ebookInternalLinkDecorationIds: string[] = [];
 /** 锚点 id → 物理行（strip 后、与正文行号一致） */
 const ebookAnchorIdToPhysicalLine = shallowRef<Map<string, number>>(new Map());
+/** 行首起经多段 `<<A:…>>`（中间可夹任意字符）收集的链内文案；重建章节时若标题以前缀命中则跳过 */
+const ebookLeadingLinkLabelsByDisplayLine = shallowRef<
+  ReadonlyMap<number, readonly string[]>
+>(new Map());
 type EbookLinkHit = { range: monaco.Range; targetId: string };
 const ebookInternalLinkHits = shallowRef<EbookLinkHit[]>([]);
 /** 选区靠近阅读区上缘时为 true：笔尖与色盘改为在选区下方展开 */
@@ -595,10 +599,18 @@ function disposeEbookInternalLinks() {
   }
   ebookInternalLinkHits.value = [];
   ebookAnchorIdToPhysicalLine.value = new Map();
+  ebookLeadingLinkLabelsByDisplayLine.value = new Map();
 }
 
 function getEbookAnchorPhysicalLine(targetId: string): number | undefined {
   return lookupEbookAnchorPhysicalLine(ebookAnchorIdToPhysicalLine.value, targetId);
+}
+
+function getEbookLeadingLinkLabelsByDisplayLine(): ReadonlyMap<
+  number,
+  readonly string[]
+> {
+  return ebookLeadingLinkLabelsByDisplayLine.value;
 }
 
 function tryJumpEbookInternalLinkFromPoint(
@@ -638,8 +650,14 @@ function applyEbookInternalLinkMarkers() {
   if (!/<<(?:ID|A):/.test(raw)) return;
   beginProgrammaticScroll();
   const normalized = raw.replace(/\r\n/g, "\n");
-  let { text, outLines, idToPhysicalLine, linkOccurrences } =
-    stripEbookIdAndAMarkersFromText(normalized);
+  let {
+    text,
+    outLines,
+    idToPhysicalLine,
+    linkOccurrences,
+    leadingEbookLinkLabelsByLine,
+  } = stripEbookIdAndAMarkersFromText(normalized);
+  ebookLeadingLinkLabelsByDisplayLine.value = leadingEbookLinkLabelsByLine;
   if (
     text === normalized &&
     idToPhysicalLine.size === 0 &&
@@ -1299,6 +1317,7 @@ defineExpose({
   restoreEditorViewState,
   applyEmbeddedImageAnchors,
   applyEbookInternalLinkMarkers,
+  getEbookLeadingLinkLabelsByDisplayLine,
 });
 
 function applyReaderSyntaxFromProps() {

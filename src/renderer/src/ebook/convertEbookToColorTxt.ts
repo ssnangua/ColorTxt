@@ -1,7 +1,6 @@
 import type { ColorTxtArtifacts } from "./ebookTypes";
 import {
   isEbookFilePath,
-  fileStemFromPath,
   ebookSourceFileBaseForOutput,
 } from "./ebookFormat";
 import { convertEpubToArtifacts, tryConvertZipAsEpub } from "./parseEpub";
@@ -95,7 +94,6 @@ export async function convertBookBufferToArtifacts(
   buffer: ArrayBuffer,
 ): Promise<ColorTxtArtifacts> {
   const lower = absSource.toLowerCase();
-  const stem = fileStemFromPath(absSource);
   const outputBase = ebookSourceFileBaseForOutput(absSource);
 
   if (lower.endsWith(".epub")) {
@@ -115,10 +113,10 @@ export async function convertBookBufferToArtifacts(
   }
 
   if (lower.endsWith(".fb2")) {
-    return convertFb2ToArtifacts(buffer, false, stem);
+    return convertFb2ToArtifacts(buffer, false, outputBase);
   }
   if (lower.endsWith(".fbz")) {
-    return convertFb2ToArtifacts(buffer, true, stem);
+    return convertFb2ToArtifacts(buffer, true, outputBase);
   }
   if (lower.endsWith(".pdf")) {
     return convertPdfToArtifacts(buffer);

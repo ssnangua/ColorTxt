@@ -128,11 +128,28 @@ export function useAppChapterNavigation(deps: {
     const next: Chapter[] = [];
     let lineNo = 0;
     let currentIdx = -1;
+    const leadingLinkLabels =
+      deps.readerRef.value?.getEbookLeadingLinkLabelsByDisplayLine?.() ??
+      new Map<number, readonly string[]>();
 
     for (const rawLine of lines) {
       lineNo += 1;
       const title = detectChapterTitle(rawLine);
       if (title) {
+        const labels = leadingLinkLabels.get(lineNo);
+        if (labels && labels.length > 0) {
+          const t = title.trim();
+          const fromLeadingLink = labels.some((lab) => {
+            const L = lab.trim();
+            return L.length > 0 && t.startsWith(L);
+          });
+          if (fromLeadingLink) {
+            if (currentIdx >= 0) {
+              next[currentIdx].charCount += countCharsForLine(rawLine);
+            }
+            continue;
+          }
+        }
         next.push({ title, lineNumber: lineNo, charCount: 0 });
         currentIdx = next.length - 1;
         continue;

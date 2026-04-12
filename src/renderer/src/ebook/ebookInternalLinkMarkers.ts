@@ -1,6 +1,6 @@
 /**
  * 电子书转换正文中的内链标记：`<<ID:…>>`（锚点，加载后删除）、`<<A:文案|目标ID>>`（可点击跳转）。
- * 转义：`\`、`|`、`>`、换行；目标 ID 与 `parseEpub` 中产出的 `zipPath#frag` 形式一致。
+ * 转义：`\`、`|`、`>`、换行；目标 ID：`parseEpub` 为 `文件名#片段`；FB2 为 `{basename}.fb2#片段`；MOBI 为 `mobi-NNNN#片段`（NNNN 为 spine 片段序号）。
  */
 
 const MARK_ID = "<<ID:";
@@ -74,6 +74,66 @@ function parseAWireLabelTarget(wire: string): { label: string; target: string } 
   const rest = wire.slice(la.end + 1);
   const target = unescapeEbookMarkerPayload(rest);
   return { label, target };
+}
+
+function tryConsumeIdMarkerAt(str: string, pos: number): number {
+  if (!str.startsWith(MARK_ID, pos)) return pos;
+  const payloadStart = pos + MARK_ID.length;
+  const pl = scanUntilStop(str, payloadStart, ">>");
+  if (!pl) return pos;
+  return pl.end + 2;
+}
+
+function tryConsumeAMarkerAt(
+  str: string,
+  pos: number,
+): { nextPos: number; label: string } | null {
+  if (!str.startsWith(MARK_A, pos)) return null;
+  const absInnerStart = pos + MARK_A.length;
+  const tail = str.slice(absInnerStart);
+  const la = scanUntilStop(tail, 0, "|");
+  if (!la) return null;
+  const afterPipe = tail.slice(la.end + 1);
+  const ta = scanUntilStop(afterPipe, 0, ">>");
+  if (!ta) return null;
+  const wire = tail.slice(0, la.end) + "|" + afterPipe.slice(0, ta.end);
+  const parsed = parseAWireLabelTarget(wire);
+  if (!parsed) return null;
+  const nextPos = absInnerStart + la.end + 1 + ta.end + 2;
+  return { nextPos, label: parsed.label || "·" };
+}
+
+/**
+ * 从行首起解析：先跳过行首空白，再反复「吃掉 `<<ID:…>>` → 吃掉一条 `<<A:…|…>>` → 在余下串中查找下一处 `<<A:`」。
+ * 两个 `<<A:…>>` 之间可为任意字符（如 `<<A:第一章|…>> 随便什么 <<A:第二章|…>>`）。
+ * 用于重建章节：若 `detectChapterTitle` 结果以其中任一标签为前缀，则视为链内假章节。
+ */
+export function collectLeadingEbookALabelsFromLine(rawLine: string): string[] {
+  const labels: string[] = [];
+  const s = rawLine.replace(/\r\n/g, "\n").split("\n")[0] ?? "";
+  let pos = 0;
+
+  while (pos < s.length && /\s/.test(s[pos]!)) pos++;
+
+  for (;;) {
+    for (;;) {
+      const idNext = tryConsumeIdMarkerAt(s, pos);
+      if (idNext > pos) pos = idNext;
+      else break;
+    }
+
+    const am = tryConsumeAMarkerAt(s, pos);
+    if (!am) break;
+
+    labels.push(am.label);
+    pos = am.nextPos;
+
+    const nextA = s.indexOf(MARK_A, pos);
+    if (nextA === -1) break;
+    pos = nextA;
+  }
+
+  return labels;
 }
 
 /** 从行内提取 `<<ID:…>>` */
@@ -152,6 +212,11 @@ export type StripEbookMarkersResult = {
   outLines: string[];
   idToPhysicalLine: Map<string, number>;
   linkOccurrences: EbookInternalLinkOccurrence[];
+  /**
+   * 自行首经「空白 → ID → A → 余下串中下一 `<<A:` …」收集的链内文案列表，键为处理前 Monaco 1-based 行号。
+   * 重建章节：若匹配到的标题以其中任一标签为前缀则跳过（假章节）。
+   */
+  leadingEbookLinkLabelsByLine: ReadonlyMap<number, readonly string[]>;
 };
 
 /**
@@ -167,10 +232,16 @@ export function stripEbookIdAndAMarkersFromText(
   const linkOccurrences: EbookInternalLinkOccurrence[] = [];
   const rawLines = utf8.replace(/\r\n/g, "\n").split("\n");
   const outLines: string[] = [];
+  const leadingEbookLinkLabelsByLine = new Map<number, string[]>();
 
   for (let i = 0; i < rawLines.length; i++) {
     const physicalLine = i + 1;
-    let line = rawLines[i] ?? "";
+    const raw = rawLines[i] ?? "";
+    const leadingLabels = collectLeadingEbookALabelsFromLine(raw);
+    if (leadingLabels.length > 0) {
+      leadingEbookLinkLabelsByLine.set(physicalLine, leadingLabels);
+    }
+    let line = raw;
     line = stripIdMarkersFromLine(line, physicalLine, idToPhysicalLine);
     line = replaceAMarkersWithVisibleLabel(line, physicalLine, linkOccurrences);
     outLines.push(line);
@@ -181,5 +252,6 @@ export function stripEbookIdAndAMarkersFromText(
     outLines,
     idToPhysicalLine,
     linkOccurrences,
+    leadingEbookLinkLabelsByLine,
   };
 }

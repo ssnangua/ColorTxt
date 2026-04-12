@@ -286,74 +286,6 @@ function hasBlockStructureInside(el: Element): boolean {
   return false;
 }
 
-/** EPUB3 目录 / 页码表：不写入正文，避免章节列表污染「章节」检测 */
-function isSkippableEpubNav(el: Element): boolean {
-  if (el.tagName.toLowerCase() !== "nav") return false;
-  const raw = getEpubTypeAttr(el);
-  if (raw) {
-    const tokens = raw.split(/\s+/).map((t) => t.toLowerCase());
-    if (tokens.includes("toc") || tokens.includes("page-list")) return true;
-  }
-  const role = el.getAttribute("role")?.trim().toLowerCase() ?? "";
-  if (role === "doc-toc" || role === "doc-pagelist") return true;
-  return false;
-}
-
-/**
- * `href` 是否像本书 spine 内链（相对/片段 .xhtml 等），用于识别「整页列表目录」。
- */
-function hrefLooksLikeEpubSpineInternal(h: string): boolean {
-  const t = h.trim();
-  if (!t || /^https?:\/\//i.test(t) || /^mailto:/i.test(t)) return false;
-  if (t.startsWith("#")) return true;
-  const pathOnly = t.split("#")[0]!.trim();
-  if (!pathOnly) return true;
-  const low = pathOnly.replace(/\\/g, "/").toLowerCase();
-  return (
-    low.endsWith(".xhtml") ||
-    low.endsWith(".html") ||
-    low.endsWith(".htm")
-  );
-}
-
-/**
- * 部分 EPUB 把目录做成 body 下仅一层 ul/ol，无 `nav`、无 manifest `nav`。
- * 满足时整页不写入 txt，避免章节检测被目录项刷屏。
- */
-function documentLooksLikeSpineTocPage(doc: Document): boolean {
-  const titleText =
-    doc.querySelector("title")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
-  const titleHints =
-    /^(目录|目次)$/u.test(titleText) ||
-    /^contents$/i.test(titleText) ||
-    /table\s+of\s+contents/i.test(titleText);
-
-  const body = doc.querySelector("body");
-  if (!body) return false;
-
-  const meaningfulKids = Array.from(body.children).filter((c) => {
-    const t = c.tagName.toLowerCase();
-    return t !== "script" && t !== "style" && t !== "noscript";
-  });
-  if (meaningfulKids.length !== 1) return false;
-
-  const root = meaningfulKids[0]!;
-  const rt = root.tagName.toLowerCase();
-  if (rt !== "ul" && rt !== "ol") return false;
-
-  if (body.querySelector("p")) return false;
-
-  const anchors = root.querySelectorAll("a[href]");
-  const minAnchors = titleHints ? 4 : 12;
-  if (anchors.length < minAnchors) return false;
-
-  for (const a of anchors) {
-    const h = a.getAttribute("href") ?? "";
-    if (!hrefLooksLikeEpubSpineInternal(h)) return false;
-  }
-  return true;
-}
-
 /** 在含块级子元素的容器内按 DOM 顺序输出，保留元素之间的文本节点（如 `</a> 第一折 <h3>`） */
 async function emitFlowChildNodes(
   el: Element,
@@ -370,45 +302,6 @@ async function emitFlowChildNodes(
       await emitFlowBlock(node as Element, out, ctx, htmlDirInZip, currentDocZipPath);
     }
   }
-}
-
-/** 按树序仅收集 `img`/`image`（用于目录页、nav 文档等需跳过文字但仍导出插图的场景） */
-async function collectImagesFromElement(
-  el: Element,
-  out: string[],
-  ctx: EpubImageContext,
-  htmlDirInZip: string,
-): Promise<void> {
-  const tag = el.tagName.toLowerCase();
-  if (tag === "script" || tag === "style" || tag === "noscript") {
-    return;
-  }
-  if (tag === "img" || tag === "image") {
-    const href = getImgHref(el);
-    if (href) {
-      await appendImageLineFromHref(ctx.zip, htmlDirInZip, href, ctx, out);
-    }
-    return;
-  }
-  for (const c of el.childNodes) {
-    if (c.nodeType === Node.ELEMENT_NODE) {
-      await collectImagesFromElement(c as Element, out, ctx, htmlDirInZip);
-    }
-  }
-}
-
-async function extractImagesOnlyFromXhtml(
-  html: string,
-  htmlDirInZip: string,
-  ctx: EpubImageContext,
-): Promise<string[]> {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "application/xhtml+xml");
-  const body = doc.querySelector("body");
-  if (!body) return [];
-  const out: string[] = [];
-  await collectImagesFromElement(body, out, ctx, htmlDirInZip);
-  return out;
 }
 
 function walkInlineNodes(
@@ -628,11 +521,6 @@ async function emitFlowBlock(
     return;
   }
 
-  if (tag === "nav" && isSkippableEpubNav(el)) {
-    await collectImagesFromElement(el, out, ctx, htmlDirInZip);
-    return;
-  }
-
   if (el.matches(EMIT_AS_INLINE_PARAGRAPH)) {
     await paragraphToLines(el, out, ctx, htmlDirInZip, currentDocZipPath);
     return;
@@ -725,14 +613,6 @@ async function xhtmlToLines(
 ): Promise<string[]> {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "application/xhtml+xml");
-  if (documentLooksLikeSpineTocPage(doc)) {
-    const bodyToc = doc.querySelector("body");
-    const onlyImg: string[] = [];
-    if (bodyToc) {
-      await collectImagesFromElement(bodyToc, onlyImg, ctx, htmlDirInZip);
-    }
-    return onlyImg;
-  }
   const body = doc.querySelector("body");
   if (!body) return [];
   const out: string[] = [];
@@ -755,19 +635,7 @@ async function xhtmlToLines(
     }
   }
   if (out.length === 0 && body.textContent?.trim()) {
-    const meaningful = Array.from(body.children).filter((c) => {
-      const t = c.tagName.toLowerCase();
-      return t !== "script" && t !== "style" && t !== "noscript";
-    });
-    const onlySkippableNavs =
-      meaningful.length > 0 &&
-      meaningful.every(
-        (c) =>
-          c.tagName.toLowerCase() === "nav" && isSkippableEpubNav(c as Element),
-      );
-    if (!onlySkippableNavs) {
-      out.push(normalizeSpace(body.textContent));
-    }
+    out.push(normalizeSpace(body.textContent));
   }
   prependMissingChapterLead(doc, out);
   return out;
@@ -809,18 +677,6 @@ export async function convertLoadedEpubZip(
     });
   }
 
-  const guideTocZipKeys = new Set<string>();
-  for (const ref of opfDoc.querySelectorAll("guide > reference")) {
-    const type = (ref.getAttribute("type") ?? "").trim().toLowerCase();
-    if (type !== "toc") continue;
-    const gh = ref.getAttribute("href")?.trim();
-    if (!gh) continue;
-    const pathOnly = gh.split("#")[0]!.trim();
-    guideTocZipKeys.add(
-      zipPathCompareKey(resolveInZip(opfDir, pathOnly)),
-    );
-  }
-
   const spineIds: string[] = [];
   for (const item of opfDoc.querySelectorAll("spine > itemref")) {
     const idref = item.getAttribute("idref");
@@ -843,7 +699,7 @@ export async function convertLoadedEpubZip(
   for (const id of spineIds) {
     const entry = manifestById.get(id);
     if (!entry) continue;
-    const { href, media, properties } = entry;
+    const { href, media } = entry;
     if (media.startsWith("image/")) continue;
 
     const zipPath = resolveInZip(opfDir, href);
@@ -860,23 +716,6 @@ export async function convertLoadedEpubZip(
     const htmlDirInZip = zipPath.includes("/")
       ? zipPath.slice(0, zipPath.lastIndexOf("/"))
       : "";
-    const propTokens = properties.split(/\s+/).filter(Boolean);
-    const isGuideToc = guideTocZipKeys.has(zipPathCompareKey(zipPath));
-
-    /** 此处仅抽出图片行，避免 `nav` 与 guide 指向的目录页被整段跳过导致其中的插图丢失 */
-    if (propTokens.includes("nav") || isGuideToc) {
-      const chunk = await extractImagesOnlyFromXhtml(
-        raw,
-        htmlDirInZip,
-        imageCtx,
-      );
-      for (const ln of chunk) {
-        if (ln.trim().length > 0) lines.push(ln);
-      }
-      lines.push("");
-      await yieldToUi();
-      continue;
-    }
 
     const chunk = await xhtmlToLines(raw, htmlDirInZip, imageCtx, zipPath);
     for (const ln of chunk) {
