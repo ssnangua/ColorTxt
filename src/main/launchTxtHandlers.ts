@@ -3,6 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import type { CreateMainWindow } from "./windowFactory";
+import { isSupportedShellOpenPath } from "../shared/ebookExtensions";
 
 type SetupLaunchTxtHandlersOptions = {
   createWindow: CreateMainWindow;
@@ -16,8 +17,7 @@ type LaunchTxtHandlerApi = {
 function getTxtPathFromArgv(argv: string[]): string | null {
   for (const arg of argv.slice(1)) {
     if (arg.startsWith("-")) continue;
-    const lower = arg.toLowerCase();
-    if (!lower.endsWith(".txt")) continue;
+    if (!isSupportedShellOpenPath(arg)) continue;
     try {
       if (!existsSync(arg)) continue;
       const s = statSync(arg);
@@ -39,7 +39,7 @@ export function setupLaunchTxtHandlers(
     const resolved = path.resolve(filePath);
     try {
       const st = await stat(resolved);
-      if (!st.isFile() || !resolved.toLowerCase().endsWith(".txt")) return;
+      if (!st.isFile() || !isSupportedShellOpenPath(resolved)) return;
     } catch {
       return;
     }
@@ -77,7 +77,7 @@ export function setupLaunchTxtHandlers(
   if (process.platform === "darwin") {
     app.on("open-file", (event, filePath) => {
       event.preventDefault();
-      if (!filePath.toLowerCase().endsWith(".txt")) return;
+      if (!isSupportedShellOpenPath(filePath)) return;
       if (app.isReady()) {
         void focusAndOpenTxtPath(filePath);
       } else {

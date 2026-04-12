@@ -38,6 +38,7 @@ defineProps<{
   monacoFontFamily: string;
   highlightColorsLight: string[];
   highlightColorsDark: string[];
+  ebookConvertOutputDir: string;
 }>();
 
 const emit = defineEmits<{
@@ -118,6 +119,7 @@ function onBookmarkNoteKeydown(e: KeyboardEvent) {
     :compress-blank-keep-one-blank="compressBlankKeepOneBlank"
     :monaco-custom-highlight="monacoCustomHighlight"
     :txtr-delimited-match-cross-line="txtrDelimitedMatchCrossLine"
+    :ebook-convert-output-dir="ebookConvertOutputDir"
     @apply="emit('applySettings', $event)"
   />
   <ChapterRulePanel

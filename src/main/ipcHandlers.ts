@@ -8,13 +8,25 @@ import {
   type MessageBoxOptions,
 } from "electron";
 import { createReadStream } from "node:fs";
-import { open, readdir, realpath, stat } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { getFonts } from "font-list";
 import iconv from "iconv-lite";
 import jschardet from "jschardet";
+import { EBOOK_DOT_EXTENSIONS } from "@shared/ebookExtensions";
 import { APP_DISPLAY_NAME } from "@shared/packageDerived";
 import type { CreateMainWindow } from "./windowFactory";
+import { registerLocalFileForColortxtUrl } from "./colortxtLocalProtocol";
 import {
   getToggleVisibilityShortcut,
   resumeGlobalShortcutsAfterRecording,
@@ -25,6 +37,12 @@ import {
 
 type TxtFileItem = { name: string; path: string; size: number };
 type DirListScanProgress = (item: { name: string; path: string }) => void;
+
+function isTxtOrEbookFileName(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".txt")) return true;
+  return EBOOK_DOT_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
 
 type RegisterMainIpcHandlersOptions = {
   createWindow: CreateMainWindow;
@@ -78,7 +96,7 @@ async function collectTxtFilesUnderRoot(
           const st = await stat(fullPath);
           if (st.isDirectory()) {
             subdirs.push(fullPath);
-          } else if (st.isFile() && entry.name.toLowerCase().endsWith(".txt")) {
+          } else if (st.isFile() && isTxtOrEbookFileName(entry.name)) {
             const relativePath = path
               .relative(rootDir, fullPath)
               .replaceAll("\\", "/");
@@ -95,7 +113,7 @@ async function collectTxtFilesUnderRoot(
         continue;
       }
 
-      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".txt")) {
+      if (!entry.isFile() || !isTxtOrEbookFileName(entry.name)) {
         continue;
       }
 
@@ -191,7 +209,29 @@ export function registerMainIpcHandlers(
   ipcMain.handle("dialog:openTxt", async () => {
     const res = await dialog.showOpenDialog({
       properties: ["openFile"],
-      filters: [{ name: "Text", extensions: ["txt"] }],
+      filters: [
+        {
+          name: "电子书",
+          extensions: ["txt", "epub", "mobi", "azw3", "fb2", "fbz", "pdf"],
+        },
+      ],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    return res.filePaths[0];
+  });
+
+  /** 无类型过滤的单文件选择（路径选择组件 `isDirectory=false`） */
+  ipcMain.handle("dialog:openFilePlain", async () => {
+    const res = await dialog.showOpenDialog({
+      properties: ["openFile"],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    return res.filePaths[0];
+  });
+
+  ipcMain.handle("dialog:openDirectoryPlain", async () => {
+    const res = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
     });
     if (res.canceled || res.filePaths.length === 0) return null;
     return res.filePaths[0];
@@ -299,13 +339,90 @@ export function registerMainIpcHandlers(
   });
 
   ipcMain.handle("file:stat", async (_evt, filePath: string) => {
-    const s = await stat(filePath);
-    return {
-      size: s.size,
-      mtimeMs: s.mtimeMs,
-      isFile: s.isFile(),
-      isDirectory: s.isDirectory(),
-    };
+    try {
+      const resolved = path.resolve(filePath);
+      const s = await stat(resolved);
+      return {
+        size: s.size,
+        mtimeMs: s.mtimeMs,
+        isFile: s.isFile(),
+        isDirectory: s.isDirectory(),
+      };
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (err?.code === "ENOENT") {
+        return {
+          size: 0,
+          mtimeMs: 0,
+          isFile: false,
+          isDirectory: false,
+        };
+      }
+      throw e;
+    }
+  });
+
+  ipcMain.handle("app:getPath", (_evt, name: string) => {
+    try {
+      return app.getPath(name as Parameters<typeof app.getPath>[0]);
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle("path:toFileUrl", (_evt, filePath: string) => {
+    try {
+      return pathToFileURL(path.resolve(filePath)).href;
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle("colortxtLocal:registerPath", async (_evt, filePath: string) => {
+    return registerLocalFileForColortxtUrl(String(filePath ?? ""));
+  });
+
+  ipcMain.handle("file:readFileAsBuffer", async (_evt, filePath: string) => {
+    return readFile(path.resolve(filePath));
+  });
+
+  ipcMain.handle(
+    "file:writeUtf8File",
+    async (_evt, filePath: string, utf8: string) => {
+      const resolved = path.resolve(filePath);
+      await mkdir(path.dirname(resolved), { recursive: true });
+      await writeFile(resolved, utf8, "utf8");
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle(
+    "file:writeBinaryFile",
+    async (_evt, filePath: string, base64: string) => {
+      const resolved = path.resolve(filePath);
+      await mkdir(path.dirname(resolved), { recursive: true });
+      await writeFile(resolved, Buffer.from(base64, "base64"));
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle("fs:emptyDir", async (_evt, dirPath: string) => {
+    const resolved = path.resolve(dirPath);
+    await rm(resolved, { recursive: true, force: true });
+    await mkdir(resolved, { recursive: true });
+    return { ok: true as const };
+  });
+
+  /** 删除文件或目录（不存在则忽略）；无插图转换时用于移除残留的 `{basename}.Images/` */
+  ipcMain.handle("fs:removePath", async (_evt, targetPath: string) => {
+    const resolved = path.resolve(targetPath);
+    await rm(resolved, { recursive: true, force: true });
+    return { ok: true as const };
+  });
+
+  ipcMain.handle("fs:mkdir", async (_evt, dirPath: string) => {
+    await mkdir(path.resolve(dirPath), { recursive: true });
+    return { ok: true as const };
   });
 
   ipcMain.handle("dir:listTxtFiles", async (evt, dirPath: string) => {
@@ -383,7 +500,28 @@ export function registerMainIpcHandlers(
   });
 
   // Stream file content to renderer in chunks. Renderer assembles text + detects chapters.
-  ipcMain.on("file:stream", async (evt, filePath: string) => {
+  ipcMain.on("file:stream", async (evt, arg: unknown) => {
+    const physicalPath =
+      typeof arg === "string"
+        ? arg
+        : arg &&
+            typeof arg === "object" &&
+            "physicalPath" in arg &&
+            typeof (arg as { physicalPath: unknown }).physicalPath === "string"
+          ? (arg as { physicalPath: string }).physicalPath
+          : "";
+    const sessionFilePathRaw =
+      arg &&
+      typeof arg === "object" &&
+      "sessionFilePath" in arg &&
+      typeof (arg as { sessionFilePath: unknown }).sessionFilePath === "string"
+        ? (arg as { sessionFilePath: string }).sessionFilePath.trim()
+        : "";
+    const sessionFilePath =
+      sessionFilePathRaw.length > 0 ? sessionFilePathRaw : undefined;
+
+    if (!physicalPath) return;
+
     const sender = evt.sender;
     const senderId = sender.id;
     const prevStream = activeStreamBySenderId.get(senderId);
@@ -395,64 +533,92 @@ export function registerMainIpcHandlers(
     const requestId = (streamRequestSeqBySenderId.get(senderId) ?? 0) + 1;
     streamRequestSeqBySenderId.set(senderId, requestId);
 
+    const streamMeta = {
+      filePath: physicalPath,
+      ...(sessionFilePath != null ? { sessionFilePath } : {}),
+    };
+
     let totalBytes = 0;
     try {
-      const st = await stat(filePath);
+      const st = await stat(physicalPath);
+      if (!st.isFile()) {
+        sender.send("file:stream-error", {
+          requestId,
+          ...streamMeta,
+          message: "路径不是可读文件",
+        });
+        return;
+      }
       totalBytes = st.size;
-    } catch {
-      // createReadStream will emit error if missing
-    }
-    const encoding = await detectEncoding(filePath);
-    const decoder = iconv.getDecoder(encoding);
-    const fileStream = createReadStream(filePath, {
-      highWaterMark: 1024 * 256,
-    });
-    activeStreamBySenderId.set(senderId, fileStream);
-
-    sender.send("file:stream-start", {
-      requestId,
-      filePath,
-      encoding,
-      totalBytes,
-    });
-
-    let readBytes = 0;
-    fileStream.on("data", (chunk: string | Buffer) => {
-      if (streamRequestSeqBySenderId.get(senderId) !== requestId) return;
-      const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-      readBytes += buf.length;
-      const text = decoder.write(buf);
-      sender.send("file:stream-chunk", {
+    } catch (err) {
+      sender.send("file:stream-error", {
         requestId,
-        filePath,
-        text,
-        readBytes,
+        ...streamMeta,
+        message:
+          err instanceof Error ? err.message : "文件不存在或不可访问",
+      });
+      return;
+    }
+
+    try {
+      const encoding = await detectEncoding(physicalPath);
+      const decoder = iconv.getDecoder(encoding);
+      const fileStream = createReadStream(physicalPath, {
+        highWaterMark: 1024 * 256,
+      });
+      activeStreamBySenderId.set(senderId, fileStream);
+
+      sender.send("file:stream-start", {
+        requestId,
+        ...streamMeta,
+        encoding,
         totalBytes,
       });
-    });
-    fileStream.on("end", () => {
-      if (streamRequestSeqBySenderId.get(senderId) !== requestId) return;
-      const tail = decoder.end();
-      if (tail) {
+
+      let readBytes = 0;
+      fileStream.on("data", (chunk: string | Buffer) => {
+        if (streamRequestSeqBySenderId.get(senderId) !== requestId) return;
+        const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+        readBytes += buf.length;
+        const text = decoder.write(buf);
         sender.send("file:stream-chunk", {
           requestId,
-          filePath,
-          text: tail,
+          ...streamMeta,
+          text,
           readBytes,
           totalBytes,
         });
-      }
-      activeStreamBySenderId.delete(senderId);
-      sender.send("file:stream-end", { requestId, filePath });
-    });
-    fileStream.on("error", (err) => {
-      if (streamRequestSeqBySenderId.get(senderId) !== requestId) return;
-      activeStreamBySenderId.delete(senderId);
+      });
+      fileStream.on("end", () => {
+        if (streamRequestSeqBySenderId.get(senderId) !== requestId) return;
+        const tail = decoder.end();
+        if (tail) {
+          sender.send("file:stream-chunk", {
+            requestId,
+            ...streamMeta,
+            text: tail,
+            readBytes,
+            totalBytes,
+          });
+        }
+        activeStreamBySenderId.delete(senderId);
+        sender.send("file:stream-end", { requestId, ...streamMeta });
+      });
+      fileStream.on("error", (err) => {
+        if (streamRequestSeqBySenderId.get(senderId) !== requestId) return;
+        activeStreamBySenderId.delete(senderId);
+        sender.send("file:stream-error", {
+          requestId,
+          ...streamMeta,
+          message: err?.message ?? String(err),
+        });
+      });
+    } catch (err) {
       sender.send("file:stream-error", {
         requestId,
-        filePath,
-        message: err?.message ?? String(err),
+        ...streamMeta,
+        message: err instanceof Error ? err.message : String(err),
       });
-    });
+    }
   });
 }

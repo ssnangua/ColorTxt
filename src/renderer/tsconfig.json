@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@shared/*": ["src/shared/*"]
+    }
+  },
+  "include": [
+    "./src/**/*.ts",
+    "./src/**/*.vue",
+    "./src/**/*.d.ts",
+    "../preload/**/*.ts"
+  ]
+}

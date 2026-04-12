@@ -73,6 +73,7 @@ onBeforeUnmount(() => {
       aria-modal="true"
       :aria-labelledby="title ? titleId : undefined"
       @click.self="onMaskClick"
+      @drop.stop.prevent
     >
       <div
         class="appModalPanel"

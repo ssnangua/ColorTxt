@@ -29,6 +29,15 @@ export async function prepareOpenFile(params: {
     return { ok: false, message: `文件不存在或不可访问：${filePath}` };
   }
 
+  if (
+    !fromList &&
+    fallbackStat &&
+    !fallbackStat.isFile &&
+    !fallbackStat.isDirectory
+  ) {
+    return { ok: false, message: `文件不存在或不可访问：${filePath}` };
+  }
+
   return {
     ok: true,
     fileSize: fromList?.size ?? fallbackStat?.size ?? null,

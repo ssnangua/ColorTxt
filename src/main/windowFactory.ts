@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import { stat } from "node:fs/promises";
 import path from "node:path";
+import { isSupportedShellOpenPath } from "@shared/ebookExtensions";
 import { APP_DISPLAY_NAME } from "@shared/packageDerived";
 import {
   resolveInitialWindowBounds,
@@ -89,7 +90,7 @@ export function createMainWindowFactory(maps: MainWindowMaps): CreateMainWindow 
       void (async () => {
         try {
           const st = await stat(resolved);
-          if (!st.isFile() || !resolved.toLowerCase().endsWith(".txt")) {
+          if (!st.isFile() || !isSupportedShellOpenPath(resolved)) {
             pendingOpenTxtByWindowId.delete(win.id);
           }
         } catch {

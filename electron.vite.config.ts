@@ -17,9 +17,7 @@ const DEFAULT_GITHUB_REPO_URL = "https://github.com/ssnangua/ColorTxt";
 
 function readPackageGithubRepoUrl(): string {
   const hp =
-    typeof packageJson.homepage === "string"
-      ? packageJson.homepage.trim()
-      : "";
+    typeof packageJson.homepage === "string" ? packageJson.homepage.trim() : "";
   const base = hp || DEFAULT_GITHUB_REPO_URL;
   return base.replace(/\/+$/, "");
 }
@@ -71,7 +69,14 @@ export default defineConfig({
         // Keep `font-list` as a runtime dependency so its internal `./libs/core`
         // relative requires resolve from `node_modules/font-list/`.
         // `iconv-lite` + `jschardet` are runtime-only and can remain in node_modules.
-        external: ["font-list", "iconv-lite", "jschardet", "electron-updater"],
+        external: [
+          "font-list",
+          "iconv-lite",
+          "jschardet",
+          "jszip",
+          "pdfjs-dist",
+          "electron-updater",
+        ],
       },
     },
   },
@@ -102,7 +107,10 @@ export default defineConfig({
       {
         name: "inject-app-display-name-in-html",
         transformIndexHtml(html: string) {
-          return html.replaceAll("%APP_DISPLAY_NAME%", APP_DISPLAY_NAME_LITERAL);
+          return html.replaceAll(
+            "%APP_DISPLAY_NAME%",
+            APP_DISPLAY_NAME_LITERAL,
+          );
         },
       },
       vue(),

@@ -4,8 +4,10 @@ withDefaults(
     loading: boolean;
     /** 流式读取进度 0–100；未知总大小时为 null */
     loadingProgressPercent: number | null;
+    /** 电子书转为 txt 阶段 */
+    ebookParsing?: boolean;
     currentFile: string | null;
-    /** 底栏左侧路径展示文案（与正文打开路径一致） */
+    /** 底栏左侧路径展示（电子书为实际打开的转换结果 .txt 路径） */
     pathCaption: string;
     readingProgressPercentPart: string;
     readingProgressDetailPart: string;
@@ -17,6 +19,7 @@ withDefaults(
   }>(),
   {
     loadingProgressPercent: null,
+    ebookParsing: false,
   },
 );
 
@@ -28,20 +31,23 @@ defineEmits<{
 <template>
   <footer class="footer">
     <div class="footer-left">
-      <div v-if="currentFile" class="footerPathWrap">
+      <div v-if="currentFile || ebookParsing" class="footerPathWrap">
         <button
           type="button"
           class="link footerPath"
-          :title="`在文件管理器中显示：${currentFile}`"
+          :title="`在文件管理器中显示：${pathCaption}`"
           @click="$emit('revealFileInFolder')"
         >
           {{ pathCaption }}
         </button>
       </div>
     </div>
-    <div v-if="currentFile" class="footer-right">
-      <span v-if="loading" class="footer-loading">
-        <template v-if="loadingProgressPercent != null">
+    <div v-if="currentFile || ebookParsing" class="footer-right">
+      <span v-if="loading || ebookParsing" class="footer-loading">
+        <template v-if="ebookParsing">
+          <span class="footer-loading-ebook">转换中…</span>
+        </template>
+        <template v-else-if="loadingProgressPercent != null">
           加载中：<span class="footer-loading-pct"
             >{{ loadingProgressPercent }}%</span
           >
@@ -59,9 +65,11 @@ defineEmits<{
           >{{ readingProgressPercentPart }}</span
         >{{ readingProgressDetailPart }}
       </span>
-      <span v-if="!loading">总字数：{{ totalCharCountText }}</span>
-      <span>文件大小：{{ fileSizeText }}</span>
-      <span>编码：{{ fileEncoding }}</span>
+      <template v-if="!ebookParsing">
+        <span v-if="!loading">总字数：{{ totalCharCountText }}</span>
+        <span>文件大小：{{ fileSizeText }}</span>
+        <span>编码：{{ fileEncoding }}</span>
+      </template>
     </div>
   </footer>
 </template>
@@ -96,6 +104,10 @@ defineEmits<{
 }
 
 .footer-loading-pct {
+  color: var(--warning);
+}
+
+.footer-loading-ebook {
   color: var(--warning);
 }
 

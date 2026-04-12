@@ -10,7 +10,6 @@ import {
 } from "vue";
 import * as monaco from "monaco-editor";
 import kingHwaFontUrl from "../assets/KingHwa_OldSong1.0.ttf?url";
-import { icons } from "../icons";
 import {
   type ChapterStickyLine,
   ensureStickyChapterBarClickDisabled,
@@ -20,6 +19,10 @@ import {
   buildChapterTitleDecorations,
   setReaderSyntaxHighlightEnabled,
 } from "../monaco/readerInlineDecorations";
+import {
+  replaceImgAnchorLinesWithViewZones,
+  removeViewZonesById,
+} from "../monaco/readerImageViewZones";
 import {
   READER_EDITOR_DEFAULT_FONT_FAMILY,
   READER_EDITOR_DEFAULT_FONT_SIZE,
@@ -38,6 +41,15 @@ import {
   leadingWhitespaceColumnCount,
 } from "../chapter";
 import AppContextMenu from "./AppContextMenu.vue";
+import ReaderHighlightFloat from "./ReaderHighlightFloat.vue";
+import ReaderImageLightbox from "./ReaderImageLightbox.vue";
+import "./readerMainMonaco.css";
+import { getSelectionEndViewportAnchor } from "../reader/readerHighlightGeometry";
+import {
+  positionFromClientPoint,
+  clientXWithinSingleLineModelRange,
+} from "../reader/readerEbookPointer";
+import { lookupEbookAnchorPhysicalLine } from "../reader/ebookAnchorLookup";
 import {
   defaultCompressBlankLines,
   defaultMonacoAdvancedWrapping,
@@ -56,6 +68,7 @@ import {
   MODAL_STACK_BASE_Z_INDEX,
   subscribeModalStackChange,
 } from "../utils/modalStack";
+import { stripEbookIdAndAMarkersFromText } from "../ebook/ebookInternalLinkMarkers";
 
 /** 低于 `AppModal` 蒙层（BASE 6000），避免盖住弹框 */
 const HL_FLOAT_Z_INDEX = MODAL_STACK_BASE_Z_INDEX - 20;
@@ -81,6 +94,16 @@ const hlPickerTop = ref(0);
 const hlPickerLeft = ref(0);
 const hlDraftText = ref("");
 const hlFloatRootRef = ref<HTMLElement | null>(null);
+const imageLightboxSrc = ref("");
+const imageViewZoneIds = ref<string[]>([]);
+/** 滚动时与 View Zone 合成对齐：取消未执行的 rAF，避免 dispose 后仍 render */
+let imageViewZoneScrollRenderRaf: number | null = null;
+/** 电子书内链装饰 id（`deltaDecorations` 返回） */
+let ebookInternalLinkDecorationIds: string[] = [];
+/** 锚点 id → 物理行（strip 后、与正文行号一致） */
+const ebookAnchorIdToPhysicalLine = shallowRef<Map<string, number>>(new Map());
+type EbookLinkHit = { range: monaco.Range; targetId: string };
+const ebookInternalLinkHits = shallowRef<EbookLinkHit[]>([]);
 /** 选区靠近阅读区上缘时为 true：笔尖与色盘改为在选区下方展开 */
 const hlFloatOpenDownward = ref(false);
 
@@ -129,6 +152,12 @@ const props = withDefaults(
     highlightWordsByIndex?: HighlightWordsByIndex;
     /** 已打开文件路径；为空时不显示选区高亮入口 */
     readerFilePath?: string | null;
+    /** 电子书 `<<ID>>` / `<<A>>`：物理行号 → Monaco 显示行（与流式滤空一致） */
+    ebookAnchorPhysicalToDisplay?: (physicalLine: number) => number;
+    /**
+     * 压缩空行时：`stripEbook…` 按 Monaco 行序记的「行号」实为显示行，需先映回源物理行再与 `ebookAnchorPhysicalToDisplay` 配对。
+     */
+    ebookDisplayLineToPhysical?: (displayLine: number) => number;
   }>(),
   {
     monacoCustomHighlight: defaultMonacoCustomHighlight,
@@ -141,6 +170,8 @@ const props = withDefaults(
     highlightColors: () => [...DEFAULT_HIGHLIGHT_COLORS_LIGHT],
     highlightWordsByIndex: undefined,
     readerFilePath: null,
+    ebookAnchorPhysicalToDisplay: undefined,
+    ebookDisplayLineToPhysical: undefined,
   },
 );
 
@@ -153,101 +184,16 @@ const emit = defineEmits<{
   removeHighlightTerm: [payload: { text: string }];
 }>();
 
-/** 用于行尾列 `col+1` 映射到下一折行时 `getOffsetForColumn` 返回异常（offHi ≤ offLo）的宽度回退 */
-function charPixelWidthForHighlightAnchor(
-  fi: monaco.editor.FontInfo,
-  char: string,
-): number {
-  if (!char) return fi.typicalHalfwidthCharacterWidth;
-  const cp = char.codePointAt(0)!;
-  if (
-    (cp >= 0x1100 && cp <= 0x11ff) ||
-    (cp >= 0x2e80 && cp <= 0xa4cf) ||
-    (cp >= 0xf900 && cp <= 0xfaff) ||
-    (cp >= 0xfe10 && cp <= 0xfe19) ||
-    (cp >= 0xfe30 && cp <= 0xfe6f) ||
-    (cp >= 0xff00 && cp <= 0xff60) ||
-    (cp >= 0xffe0 && cp <= 0xffe6) ||
-    (cp >= 0x3040 && cp <= 0x309f) ||
-    (cp >= 0x30a0 && cp <= 0x30ff) ||
-    (cp >= 0x3130 && cp <= 0x318f) ||
-    (cp >= 0xac00 && cp <= 0xd7af)
-  ) {
-    return fi.typicalFullwidthCharacterWidth;
-  }
-  return fi.typicalHalfwidthCharacterWidth;
-}
-
-/**
- * 选区在视口中的锚点（几何最右侧一列字符的右缘）。
- * 不用 `getScrolledVisiblePosition(选区 end)`：终点常在行尾 maxColumn，换行时 Monaco 会映射到错误的视觉行。
- * 取 Range 几何末端前一列；水平位置用 `contentLeft + getOffsetForColumn - scrollLeft`（与 Monaco 内容坐标一致）。
- * 行尾时 `getOffsetForColumn(line, col+1)` 常落在下一折行行首（offHi≈0），导致 offHi&lt;offLo，须用字符估算宽度。
- */
-function getSelectionEndViewportAnchor(): {
-  selectionRightX: number;
-  anchorTop: number;
-  lineBottom: number;
-} | null {
-  const e = editor.value;
-  const m = model.value;
-  if (!e || !m) return null;
-  const sel = e.getSelection();
-  if (!sel || sel.isEmpty()) return null;
-  const dom = e.getDomNode();
-  if (!dom) return null;
-  const rect = dom.getBoundingClientRect();
-
-  const end = sel.getEndPosition();
-  let line = end.lineNumber;
-  let colBefore = end.column - 1;
-  if (colBefore < 1) {
-    if (line <= 1) return null;
-    line -= 1;
-    const maxCol = m.getLineMaxColumn(line);
-    colBefore = Math.max(1, maxCol - 1);
-  }
-
-  const vp = e.getScrolledVisiblePosition({
-    lineNumber: line,
-    column: colBefore,
-  });
-  if (vp == null) return null;
-
-  const layout = e.getLayoutInfo();
-  const scrollLeft = e.getScrollLeft();
-  const baseX = rect.left + layout.contentLeft - scrollLeft;
-
-  const offLo = e.getOffsetForColumn(line, colBefore);
-  const offHi = e.getOffsetForColumn(line, colBefore + 1);
-  const fi = e.getOption(monaco.editor.EditorOption.fontInfo);
-  const lastChar = m.getValueInRange(
-    new monaco.Range(line, colBefore, line, colBefore + 1),
-  );
-
-  let rightInContent: number;
-  if (offLo >= 0 && offHi > offLo) {
-    rightInContent = offHi;
-  } else if (offLo >= 0) {
-    rightInContent = offLo + charPixelWidthForHighlightAnchor(fi, lastChar);
-  } else {
-    return null;
-  }
-
-  const selectionRightX = baseX + rightInContent;
-
-  const top = rect.top + vp.top;
-  const h = Math.max(1, vp.height);
-  return {
-    selectionRightX,
-    anchorTop: top,
-    lineBottom: top + h,
-  };
-}
-
 const HL_TIP_H = 36;
 const HL_FLOAT_GAP = 4;
 const HL_READER_EDGE = 10;
+
+function getReaderSelectionEndAnchor() {
+  const e = editor.value;
+  const m = model.value;
+  if (!e || !m) return null;
+  return getSelectionEndViewportAnchor(e, m);
+}
 
 /**
  * 根据阅读区上缘空间决定向上或向下展开，并写入 `hlFloatTop` / `hlPickerTop`。
@@ -404,7 +350,7 @@ function updateHighlightTipFromSelection() {
     closeHighlightFloatUi();
     return;
   }
-  const anchor = getSelectionEndViewportAnchor();
+  const anchor = getReaderSelectionEndAnchor();
   if (!anchor) {
     closeHighlightFloatUi();
     return;
@@ -432,7 +378,7 @@ function openHighlightPicker(ev: PointerEvent) {
   hlDraftText.value = text;
   hlTipVisible.value = false;
   hlPickerVisible.value = true;
-  const anchor = getSelectionEndViewportAnchor();
+  const anchor = getReaderSelectionEndAnchor();
   if (!anchor) return;
   placeHighlightFloatHorizontal(anchor);
   applyHighlightVerticalPlacement(anchor, { reserveSpaceForPicker: true });
@@ -583,7 +529,10 @@ function appendText(text: string) {
 /** 流式读盘结束后一次性写入正文（分块时不再逐块 append，避免重复着色与换行拼接问题） */
 function setFullText(text: string) {
   streamCarriageReturnPending = false;
-  model.value?.setValue(text);
+  const m = model.value;
+  const e = editor.value;
+  if (!m || !e) return;
+  m.setValue(text);
 }
 
 function flushStreamCarriageReturn() {
@@ -622,7 +571,133 @@ function normalizeLastLineLeadIndent() {
   ]);
 }
 
+function cancelImageViewZoneScrollRender() {
+  if (imageViewZoneScrollRenderRaf !== null) {
+    cancelAnimationFrame(imageViewZoneScrollRenderRaf);
+    imageViewZoneScrollRenderRaf = null;
+  }
+}
+
+function disposeImageViewZones() {
+  cancelImageViewZoneScrollRender();
+  const e = editor.value;
+  if (e && imageViewZoneIds.value.length > 0) {
+    removeViewZonesById(e, imageViewZoneIds.value);
+  }
+  imageViewZoneIds.value = [];
+}
+
+function disposeEbookInternalLinks() {
+  const e = editor.value;
+  if (e && ebookInternalLinkDecorationIds.length > 0) {
+    e.deltaDecorations(ebookInternalLinkDecorationIds, []);
+    ebookInternalLinkDecorationIds = [];
+  }
+  ebookInternalLinkHits.value = [];
+  ebookAnchorIdToPhysicalLine.value = new Map();
+}
+
+function getEbookAnchorPhysicalLine(targetId: string): number | undefined {
+  return lookupEbookAnchorPhysicalLine(ebookAnchorIdToPhysicalLine.value, targetId);
+}
+
+function tryJumpEbookInternalLinkFromPoint(
+  clientX: number,
+  clientY: number,
+): boolean {
+  const ed = editor.value;
+  const m = model.value;
+  if (!ed || !m || ebookInternalLinkHits.value.length === 0) return false;
+  const pos = positionFromClientPoint(ed, clientX, clientY);
+  if (!pos) return false;
+  const mapPhys =
+    props.ebookAnchorPhysicalToDisplay ?? ((n: number) => Math.max(1, n));
+  for (const h of ebookInternalLinkHits.value) {
+    if (!h.range.containsPosition(pos)) continue;
+    if (!clientXWithinSingleLineModelRange(ed, m, h.range, clientX)) continue;
+    const phys = getEbookAnchorPhysicalLine(h.targetId);
+    if (phys == null) continue;
+    beginProgrammaticScroll();
+    jumpToBookmarkLine(mapPhys(phys), true);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 在插图 Zone 处理之后调用：去掉 `<<ID:…>>`、将 `<<A:…|…>>` 换为可见文案并加下划线。
+ * 内链装饰范围用 strip 给出的**显示行**（与 Monaco 行号一致）；跳转目标 id 在压缩空行时已映为源物理行，点击时用 `ebookAnchorPhysicalToDisplay` 再映回显示行。
+ */
+function applyEbookInternalLinkMarkers() {
+  disposeEbookInternalLinks();
+  const e = editor.value;
+  const m = model.value;
+  if (!e || !m) return;
+  const raw = m.getValue();
+  if (!/<<(?:ID|A):/.test(raw)) return;
+  beginProgrammaticScroll();
+  let { text, idToPhysicalLine, linkOccurrences } =
+    stripEbookIdAndAMarkersFromText(raw);
+  if (
+    text === raw &&
+    idToPhysicalLine.size === 0 &&
+    linkOccurrences.length === 0
+  ) {
+    return;
+  }
+  if (props.compressBlankLines) {
+    const toPhys =
+      props.ebookDisplayLineToPhysical ??
+      ((n: number) => Math.max(1, Math.floor(n)));
+    const idMap = new Map<string, number>();
+    for (const [id, displayLine] of idToPhysicalLine) {
+      idMap.set(id, toPhys(displayLine));
+    }
+    idToPhysicalLine = idMap;
+  }
+  m.setValue(text);
+  ebookAnchorIdToPhysicalLine.value = idToPhysicalLine;
+  const decs: monaco.editor.IModelDeltaDecoration[] = [];
+  const hits: EbookLinkHit[] = [];
+  const lineCount = Math.max(1, m.getLineCount());
+  for (const occ of linkOccurrences) {
+    const dl = Math.min(lineCount, Math.max(1, occ.physicalLine));
+    const r = new monaco.Range(
+      dl,
+      occ.startColumn,
+      dl,
+      occ.endColumnExclusive,
+    );
+    decs.push({
+      range: r,
+      options: {
+        inlineClassName: "readerEbookInternalLink",
+        hoverMessage: { value: "内部跳转" },
+      },
+    });
+    hits.push({ range: r, targetId: occ.targetId });
+  }
+  ebookInternalLinkHits.value = hits;
+  ebookInternalLinkDecorationIds = e.deltaDecorations([], decs);
+}
+
+async function applyEmbeddedImageAnchors(convertedTxtAbsPath: string | null) {
+  disposeImageViewZones();
+  imageLightboxSrc.value = "";
+  const p = convertedTxtAbsPath?.trim();
+  if (!p) return;
+  const e = editor.value;
+  if (!e) return;
+  const ids = await replaceImgAnchorLinesWithViewZones(monaco, e, p, {
+    zoneHeightPx: 100,
+  });
+  imageViewZoneIds.value = ids;
+}
+
 function clear(opts?: ReaderClearOptions) {
+  disposeEbookInternalLinks();
+  disposeImageViewZones();
+  imageLightboxSrc.value = "";
   streamCarriageReturnPending = false;
   lastChapterTitleDecorationsLineKey = "";
   chaptersSnapshot = [];
@@ -781,6 +856,24 @@ function resetToTop() {
       // ignore
     }
   });
+}
+
+/**
+ * 将视口对齐到文档最顶（scrollTop=0）。
+ * 首屏为 `afterLineNumber: 0` 的插图 View Zone 时，若用 `jumpToLine(1)` 会按正文第 1 行顶对齐，等于滚过插图，滚动条也不在顶。
+ */
+function scrollToDocumentStart(smooth = false) {
+  const e = editor.value;
+  const m = model.value;
+  if (!e || !m) return;
+  beginProgrammaticScroll();
+  const scrollType = smooth
+    ? monaco.editor.ScrollType.Smooth
+    : monaco.editor.ScrollType.Immediate;
+  e.layout();
+  e.setScrollTop(0, scrollType);
+  e.setPosition({ lineNumber: 1, column: 1 });
+  e.focus();
 }
 
 function jumpToLine(lineNumber: number, smooth = true) {
@@ -992,6 +1085,44 @@ function scrollToBottom(smooth = false) {
   );
 }
 
+/**
+ * 嵌入图片 View Zone 会改变 scrollHeight；须在 Zone 与正文都进布局后再钳制滚动。
+ * - 贴近物理顶：scrollTop≤edge 或「篇首插图」时 jumpToLine(1) 会得到 scrollTop≈getTopForLineNumber(1)（>0），须归一为 0。
+ * - 贴近物理底：scrollTop≈maxTop。
+ * 双帧：首帧 + rAF 再跑一遍，避免 Zone 插入后首帧 scrollHeight 仍未稳定。
+ */
+function normalizeScrollAfterEmbeddedViewZones() {
+  const runPass = () => {
+    const e = editor.value;
+    if (!e) return;
+    beginProgrammaticScroll();
+    e.layout();
+    e.render(true);
+    const layoutH = Math.max(1, e.getLayoutInfo().height);
+    const maxTop = Math.max(0, e.getScrollHeight() - layoutH);
+    const lh = Math.max(1, e.getOption(monaco.editor.EditorOption.lineHeight));
+    const edgePx = Math.min(8, lh * 0.35);
+    const alignTol = Math.max(edgePx, Math.floor(lh * 0.45));
+    const st0 = Math.max(0, e.getScrollTop());
+    const top1 = e.getTopForLineNumber(1);
+
+    if (st0 <= edgePx) {
+      e.setScrollTop(0, monaco.editor.ScrollType.Immediate);
+    } else if (
+      top1 > 0 &&
+      st0 >= top1 - alignTol &&
+      st0 <= top1 + alignTol
+    ) {
+      // 与 jumpToLine(1) 顶对齐同一语义：正文第 1 行顶在视口顶；篇首若有 Zone 在上方，物理「篇首」应为 scrollTop=0。
+      e.setScrollTop(0, monaco.editor.ScrollType.Immediate);
+    } else if (maxTop > 0 && st0 >= maxTop - edgePx) {
+      e.setScrollTop(maxTop, monaco.editor.ScrollType.Immediate);
+    }
+  };
+  runPass();
+  requestAnimationFrame(runPass);
+}
+
 function getScrollTop(): number {
   const e = editor.value;
   if (!e) return 0;
@@ -1075,6 +1206,16 @@ function getProbeLine(): number {
   return r.startLineNumber + Math.floor(span * 0.75);
 }
 
+/** 与 `emitProbeLine` 内 `endLine` 一致：当前视口末行（Monaco 显示行号） */
+function getViewportEndLine(): number {
+  const e = editor.value;
+  if (!e) return 1;
+  const r = e.getVisibleRanges()[0];
+  const fallbackLine = e.getPosition()?.lineNumber ?? 1;
+  if (!r) return fallbackLine;
+  return Math.max(1, r.endLineNumber);
+}
+
 /**
  * @param fromScroll 来自视口滚动（onDidScrollChange）；为 false 时表示光标/程序性同步等
  */
@@ -1110,10 +1251,12 @@ defineExpose({
   setFontFamily,
   setWrappingStrategyAdvanced,
   resetToTop,
+  scrollToDocumentStart,
   jumpToLine,
   jumpToBookmarkLine,
   emitProbeLine,
   getProbeLine,
+  getViewportEndLine,
   getViewportTopLine,
   getViewportLineSpan,
   getAllText,
@@ -1126,11 +1269,14 @@ defineExpose({
   scrollByLineStep,
   scrollByPageStep,
   scrollToBottom,
+  normalizeScrollAfterEmbeddedViewZones,
   scrollLineToBottom,
   getScrollTop,
   scrollToScrollTop,
   getSerializedEditorViewState,
   restoreEditorViewState,
+  applyEmbeddedImageAnchors,
+  applyEbookInternalLinkMarkers,
 });
 
 function applyReaderSyntaxFromProps() {
@@ -1249,12 +1395,57 @@ onMounted(() => {
       editorContextMenuY.value = mouseEv.event.browserEvent.clientY;
       editorContextMenuOpen.value = true;
     });
+    /**
+     * Monaco 内部命中测试在部分 DOM 路径下会先得到 UNKNOWN 并短路；`.view-lines` 在 `.view-zones` 之后插入会盖住 zone。
+     * CSS 抬高 `.view-zones`；在 `editorHost` 上 **捕获** pointerdown：先处理电子书内链（须早于 Monaco 默认 mousedown），再处理插图灯箱。
+     */
+    const editorHost = editorEl.value;
+    const onReaderPointerDownCapture = (ev: PointerEvent) => {
+      if (ev.button !== 0) return;
+      if (
+        ebookInternalLinkHits.value.length > 0 &&
+        tryJumpEbookInternalLinkFromPoint(ev.clientX, ev.clientY)
+      ) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        return;
+      }
+      if (imageViewZoneIds.value.length === 0) return;
+      const t = ev.target;
+      if (!(t instanceof Element)) return;
+      const zone = t.closest(".readerImageViewZone");
+      if (!zone || !(zone instanceof HTMLElement)) return;
+      if (!editorHost?.contains(zone)) return;
+      const url = zone.dataset.colortxtImgUrl?.trim();
+      if (!url) return;
+      const img = zone.querySelector("img");
+      if (!(img instanceof HTMLImageElement)) return;
+      const r = img.getBoundingClientRect();
+      const { clientX, clientY } = ev;
+      if (
+        clientX < r.left ||
+        clientX > r.right ||
+        clientY < r.top ||
+        clientY > r.bottom
+      ) {
+        return;
+      }
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      imageLightboxSrc.value = url;
+    };
+    editorHost?.addEventListener("pointerdown", onReaderPointerDownCapture, true);
     onBeforeUnmount(() => {
       d1.dispose();
       d2.dispose();
       dSel.dispose();
       d3.dispose();
       d4.dispose();
+      editorHost?.removeEventListener(
+        "pointerdown",
+        onReaderPointerDownCapture,
+        true,
+      );
     });
 
     syncStickyScrollToStreamState();
@@ -1262,6 +1453,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  disposeEbookInternalLinks();
+  cancelImageViewZoneScrollRender();
   removeHlGlobalListeners?.();
   removeHlGlobalListeners = null;
   unsubModalStack?.();
@@ -1297,70 +1490,21 @@ onMounted(() => {
       :style="{ zIndex: HL_FLOAT_Z_INDEX }"
       aria-live="polite"
     >
-      <div
-        v-show="hlTipVisible"
-        class="hlTip"
-        :style="{ top: `${hlFloatTop}px`, left: `${hlFloatLeft}px` }"
-      >
-        <button
-          type="button"
-          class="hlTipBtn"
-          aria-label="设置高亮词"
-          title="设置高亮词"
-          @pointerdown="openHighlightPicker"
-        >
-          <span
-            class="hlTipIcon"
-            aria-hidden="true"
-            v-html="icons.highlightMark"
-          ></span>
-        </button>
-      </div>
-      <div
-        v-show="hlPickerVisible"
-        class="hlPicker"
-        :class="{ hlPickerFlipDown: hlFloatOpenDownward }"
-        :style="{ top: `${hlPickerTop}px`, left: `${hlPickerLeft}px` }"
-      >
-        <div v-if="hlPickerShowRemoveRow" class="hlSwatchRow hlPickerRemoveRow">
-          <button
-            type="button"
-            class="hlSwatch hlRemoveKeyword"
-            aria-label="移除该高亮词"
-            title="移除该高亮词"
-            @click="removeHighlightKeywordFromPicker"
-          >
-            <span
-              class="hlRemoveKeywordInner"
-              aria-hidden="true"
-              v-html="icons.clear"
-            ></span>
-          </button>
-        </div>
-        <div class="hlSwatchRow">
-          <button
-            v-for="(c, i) in highlightColors"
-            :key="i"
-            type="button"
-            class="hlSwatch"
-            :class="{
-              hlSwatchSelected:
-                hlPickerExistingColorIndex === i &&
-                hlPickerExistingColorIndex < highlightColors.length,
-            }"
-            :style="{ backgroundColor: c }"
-            :aria-label="`使用高亮色 ${i + 1}`"
-            :title="`高亮色 ${i + 1}`"
-            :aria-pressed="
-              hlPickerExistingColorIndex === i &&
-              hlPickerExistingColorIndex < highlightColors.length
-                ? 'true'
-                : 'false'
-            "
-            @click="confirmHighlightColor(i)"
-          ></button>
-        </div>
-      </div>
+      <ReaderHighlightFloat
+        :tip-visible="hlTipVisible"
+        :picker-visible="hlPickerVisible"
+        :tip-top="hlFloatTop"
+        :tip-left="hlFloatLeft"
+        :picker-top="hlPickerTop"
+        :picker-left="hlPickerLeft"
+        :open-downward="hlFloatOpenDownward"
+        :highlight-colors="highlightColors"
+        :show-remove-row="hlPickerShowRemoveRow"
+        :existing-color-index="hlPickerExistingColorIndex"
+        @pick-open="openHighlightPicker"
+        @pick-confirm="confirmHighlightColor"
+        @pick-remove="removeHighlightKeywordFromPicker"
+      />
     </div>
     <AppContextMenu
       :open="editorContextMenuOpen"
@@ -1371,6 +1515,7 @@ onMounted(() => {
       @close="closeEditorContextMenu"
       @select="onEditorContextMenuSelect"
     />
+    <ReaderImageLightbox v-model="imageLightboxSrc" />
   </main>
 </template>
 
@@ -1394,117 +1539,6 @@ onMounted(() => {
   position: fixed;
   inset: 0;
   pointer-events: none;
-}
-
-.hlTip,
-.hlPicker {
-  position: fixed;
-  pointer-events: auto;
-}
-
-.hlTipBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-  box-shadow: 0 2px 8px color-mix(in srgb, #000 12%, transparent);
-  cursor: pointer;
-}
-
-.hlTipBtn:hover {
-  filter: brightness(1.05);
-}
-
-.hlTipIcon {
-  display: inline-flex;
-  width: 22px;
-  height: 22px;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.hlTipIcon :deep(svg) {
-  width: 22px;
-  height: 22px;
-  display: block;
-}
-
-.hlPicker {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 200px;
-  max-height: 40vh;
-  overflow-y: auto;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  box-shadow: 0 4px 16px color-mix(in srgb, #000 18%, transparent);
-  transform: translateY(calc(-100%));
-}
-
-.hlPicker.hlPickerFlipDown {
-  transform: translateY(0);
-}
-
-.hlSwatchRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.hlSwatch {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 2px solid color-mix(in srgb, var(--border) 80%, transparent);
-  border-radius: 50%;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.hlSwatch:hover {
-  transform: scale(1.08);
-}
-
-.hlSwatch.hlSwatchSelected {
-  border-color: var(--bg);
-  box-shadow: 0 0 0 2px var(--accent);
-}
-
-.hlSwatch.hlRemoveKeyword {
-  border: none;
-  padding: 0;
-  overflow: hidden;
-  background: var(--bg);
-}
-
-.hlSwatch.hlRemoveKeyword .hlRemoveKeywordInner {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.hlSwatch.hlRemoveKeyword .hlRemoveKeywordInner :deep(svg) {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.hlSwatch.hlRemoveKeyword .hlRemoveKeywordInner :deep(svg path) {
-  fill: var(--danger);
 }
 
 :deep(.monaco-editor),

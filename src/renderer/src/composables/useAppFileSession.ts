@@ -9,6 +9,9 @@ import {
 import { prepareOpenFile } from "../services/fileOpenService";
 import { loadSessionSnapshot } from "../stores/cacheStore";
 import { useAppPersistence } from "./useAppPersistence";
+import { isEbookFilePath } from "../ebook/ebookFormat";
+import { ensureEbookColorTxt } from "../ebook/convertEbookToColorTxt";
+import { yieldToUi } from "../ebook/yieldToUi";
 import { useAppChapterListSync } from "./useAppChapterListSync";
 import { useTxtStreamPipeline } from "./useTxtStreamPipeline";
 import type { Chapter } from "../chapter";
@@ -67,8 +70,14 @@ export function useAppFileSession(deps: {
   /** 与主进程流 requestId 对齐；resetSession 时清空，避免旧 chunk 在清空后仍被当作当前流处理 */
   activeStreamRequestId: Ref<number | null>;
   activeStreamFilePath: Ref<string | null>;
+  /** 磁盘上实际被流式读取的路径（电子书为转换后的 `{原名}.txt`，与 currentFile 可能不同） */
+  physicalReaderPath: Ref<string | null>;
   /** 打开/重置会话后为 false，流结束并完成阅读位置同步后为 true */
   readingProgressSynced: Ref<boolean>;
+  ebookConvertOutputDir: Ref<string>;
+  ebookParsing: Ref<boolean>;
+  /** 正在转换的电子书源路径（用于底栏在 resetSession 之前显示「转换中…」） */
+  ebookConversionSourcePath: Ref<string | null>;
 }) {
   const {
     persistFileListCache,
@@ -76,11 +85,84 @@ export function useAppFileSession(deps: {
     touchRecentFile,
     removeRecentFile,
     getFileMeta,
+    persistFileMeta,
+    setEbookConvertedMeta,
   } = deps.persistence;
   const {
     pulseFileListCenter,
     suppressFileListCenterAfterLoad,
   } = deps.chapterSync;
+
+  async function resolvePhysicalTextForOpen(
+    filePath: string,
+    preparedSize: number | null,
+  ): Promise<
+    | {
+        ok: true;
+        physicalPath: string;
+        sessionFilePath?: string;
+        displaySize: number;
+      }
+    | { ok: false; message: string }
+  > {
+    if (!isEbookFilePath(filePath)) {
+      try {
+        const st = await window.colorTxt.stat(filePath);
+        if (!st.isFile) {
+          return { ok: false, message: `文件不存在或不可访问：${filePath}` };
+        }
+        return {
+          ok: true,
+          physicalPath: filePath,
+          displaySize: preparedSize ?? st.size,
+        };
+      } catch {
+        return { ok: false, message: `文件不存在或不可访问：${filePath}` };
+      }
+    }
+
+    deps.ebookConversionSourcePath.value = filePath;
+    deps.ebookParsing.value = true;
+    await nextTick();
+    await yieldToUi();
+    try {
+      const st = await window.colorTxt.stat(filePath);
+      if (!st.isFile) {
+        return { ok: false, message: `文件不存在或不可访问：${filePath}` };
+      }
+      const meta = getFileMeta(filePath);
+      const { colorTxtPath } = await ensureEbookColorTxt({
+        sourceBookPath: filePath,
+        ebookConvertOutputDir: deps.ebookConvertOutputDir.value,
+        sourceMtimeMs: st.mtimeMs,
+        existingConvertedPath: meta?.convertedTxtPath,
+        existingSourceMtimeMs: meta?.sourceMtimeMsAtConvert,
+      });
+      setEbookConvertedMeta(filePath, colorTxtPath, st.mtimeMs);
+      persistFileMeta();
+      const tst = await window.colorTxt.stat(colorTxtPath);
+      if (!tst.isFile) {
+        return {
+          ok: false,
+          message: `转换结果未生成或路径不可读：${colorTxtPath}`,
+        };
+      }
+      return {
+        ok: true,
+        physicalPath: colorTxtPath,
+        sessionFilePath: filePath,
+        displaySize: tst.size,
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        message: e instanceof Error ? e.message : String(e),
+      };
+    } finally {
+      deps.ebookParsing.value = false;
+      deps.ebookConversionSourcePath.value = null;
+    }
+  }
 
   /** 文件列表替换后：若当前打开的文件仍在列表中，则将该项滚入视口并居中 */
   function centerFileListIfCurrentInList() {
@@ -120,6 +202,7 @@ export function useAppFileSession(deps: {
     deps.currentFile.value = null;
     deps.activeStreamRequestId.value = null;
     deps.activeStreamFilePath.value = null;
+    deps.physicalReaderPath.value = null;
     deps.loading.value = false;
     deps.loadingProgressPercent.value = null;
     deps.fileEncoding.value = "-";
@@ -147,6 +230,12 @@ export function useAppFileSession(deps: {
         deps.viewportEndLine.value,
       ),
     });
+  }
+
+  /** 在解析/转换（如 EPUB）与 `resetSession` 之前清空阅读区，便于感知正在加载 */
+  function clearReaderBeforeResolve() {
+    deps.readerRef.value?.clear({ keepStickyHiddenForStream: true });
+    deps.readerRef.value?.resetToTop();
   }
 
   function resetSession(filePath: string) {
@@ -207,6 +296,12 @@ export function useAppFileSession(deps: {
         deps.sidebarTab.value = "files";
         return;
       }
+      clearReaderBeforeResolve();
+      const resolved = await resolvePhysicalTextForOpen(path, st.size);
+      if (!resolved.ok) {
+        deps.sidebarTab.value = "files";
+        return;
+      }
       const meta = getFileMeta(path);
       const savedVs = meta?.editorViewState;
       const anchorRaw = meta?.viewportTopPhysicalLine;
@@ -237,10 +332,13 @@ export function useAppFileSession(deps: {
           viewportTopLine === 1 ? null : Math.max(1, Math.floor(scrollLine));
       }
       resetSession(path);
-      deps.currentFileSize.value = st.size;
+      deps.physicalReaderPath.value = resolved.physicalPath;
+      deps.currentFileSize.value = resolved.displaySize;
       deps.sidebarTab.value = "chapters";
       await waitNextPaintFrame();
-      window.colorTxt.streamFile(path);
+      window.colorTxt.streamFile(resolved.physicalPath, {
+        sessionFilePath: resolved.sessionFilePath,
+      });
       const fileInList = deps.txtFiles.value.some((f) => f.path === path);
       if (fileInList) {
         void nextTick(() => {
@@ -355,6 +453,18 @@ export function useAppFileSession(deps: {
       return false;
     }
 
+    clearReaderBeforeResolve();
+    const resolved = await resolvePhysicalTextForOpen(
+      filePath,
+      prepared.fileSize,
+    );
+    if (!resolved.ok) {
+      window.alert(resolved.message);
+      removeRecentFile(filePath);
+      suppressFileListCenterAfterLoad.value = false;
+      return false;
+    }
+
     const meta = getFileMeta(filePath);
     const savedVs = meta?.editorViewState;
     const anchorRaw = meta?.viewportTopPhysicalLine;
@@ -391,13 +501,16 @@ export function useAppFileSession(deps: {
     }
 
     resetSession(filePath);
-    deps.currentFileSize.value = prepared.fileSize;
+    deps.physicalReaderPath.value = resolved.physicalPath;
+    deps.currentFileSize.value = resolved.displaySize;
     if (!options?.keepSidebarTab) {
       deps.sidebarTab.value = "chapters";
     }
     touchRecentFile(filePath, true, { persistRecent: true, updateMeta: false });
     await waitNextPaintFrame();
-    window.colorTxt.streamFile(filePath);
+    window.colorTxt.streamFile(resolved.physicalPath, {
+      sessionFilePath: resolved.sessionFilePath,
+    });
 
     const fileInList = deps.txtFiles.value.some((f) => f.path === filePath);
     if (fileInList && !suppressFileListCenterAfterLoad.value) {

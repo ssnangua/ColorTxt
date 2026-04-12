@@ -20,10 +20,15 @@ export {
   GITHUB_RELEASES_LATEST_URL,
 } from "@shared/packageDerived";
 
-export const defaultPathText = "拖放目录或 .txt 文件到窗口";
+export const defaultReaderIdleHint = "拖放目录或 .txt 文件到窗口";
 
 /** 已打开但解码后无正文的文件（如 0 字节） */
 export const emptyFileHintText = "文件已打开，但没有内容";
+
+/** 阅读区居中：电子书转 `{原名}.txt` 阶段 */
+export const readerEbookConvertingHintText = "转换中…";
+/** 阅读区居中：正文流式读入且尚未写入任何行时 */
+export const readerTxtLoadingHintText = "加载中…";
 
 export const SIDEBAR_MIN_WIDTH = 250;
 export const SIDEBAR_MIN_READER_WIDTH = 300;

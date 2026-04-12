@@ -36,7 +36,7 @@ import {
   defaultLeadIndentFullWidth,
   defaultMonacoAdvancedWrapping,
   defaultMonacoCustomHighlight,
-  defaultPathText,
+  defaultReaderIdleHint,
   defaultReaderFontSize,
   defaultReaderLineHeightMultiple,
   defaultReaderPaletteDark,
@@ -50,6 +50,8 @@ import {
   defaultShowChapterCounts,
   defaultShowSidebar,
   emptyFileHintText,
+  readerEbookConvertingHintText,
+  readerTxtLoadingHintText,
   GITHUB_REPO_URL,
   maxFullscreenReaderWidthPercent,
   clampLineHeightMultipleForFontSize,
@@ -173,13 +175,31 @@ const {
   shouldCenterBookmarkList,
   pulseBookmarkListCenter,
 } = chapterSync;
-/** 阅读区无打开文件且未在加载时，居中显示 defaultPathText */
-const showReaderIdleHint = computed(() => !currentFile.value && !loading.value);
+/** 阅读区无打开文件且未在加载/转换时，居中显示 defaultReaderIdleHint */
+const showReaderIdleHint = computed(
+  () =>
+    !currentFile.value && !loading.value && !ebookParsing.value,
+);
+/** 电子书转换或正文流尚未写入行时，复用 `.readerIdleHint` 居中提示 */
+const showReaderBusyHint = computed(
+  () =>
+    ebookParsing.value ||
+    (!ebookParsing.value &&
+      loading.value &&
+      totalLineCount.value === 0 &&
+      totalCharCount.value === 0),
+);
+const readerBusyHintText = computed(() =>
+  ebookParsing.value
+    ? readerEbookConvertingHintText
+    : readerTxtLoadingHintText,
+);
 /** 已打开文件且流式加载完成、正文行数与字数均为 0 时居中提示 */
 const showReaderEmptyHint = computed(
   () =>
     Boolean(currentFile.value) &&
     !loading.value &&
+    !ebookParsing.value &&
     totalCharCount.value === 0 &&
     totalLineCount.value === 0,
 );
@@ -218,6 +238,20 @@ const recentFilesHistoryLimit = ref(defaultRecentFilesHistoryLimit);
 const monacoAdvancedWrapping = ref(defaultMonacoAdvancedWrapping);
 /** 全屏时阅读区域宽度（百分比） */
 const fullscreenReaderWidthPercent = ref(defaultFullscreenReaderWidthPercent);
+/** 电子书转换缓存目录；默认 userData；设置里清空则为与源文件同目录 */
+const ebookConvertOutputDir = ref(
+  (() => {
+    try {
+      return window.colorTxt.getUserDataPath();
+    } catch {
+      return "";
+    }
+  })(),
+);
+/** 电子书转换阶段（底栏显示「转换中…」） */
+const ebookParsing = ref(false);
+/** 转换进行中的电子书原路径（底栏路径；早于 currentFile 更新） */
+const ebookConversionSourcePath = ref<string | null>(null);
 
 const readerPaletteOverridesLight = ref<Partial<ReaderSurfacePalette>>({});
 const readerPaletteOverridesDark = ref<Partial<ReaderSurfacePalette>>({});
@@ -313,8 +347,12 @@ const pendingRestoreViewportTopPhysicalLine = ref<number | null>(null);
 /** 与主进程 file:stream 的 requestId 对齐；resetSession 时清空，避免重复打开同一文件时旧 chunk 串入 */
 const activeStreamRequestId = ref<number | null>(null);
 const activeStreamFilePath = ref<string | null>(null);
+/** 底栏路径与「在文件夹中显示」：电子书打开时为转换后的 `{原名}.txt` 路径 */
+const physicalReaderPath = ref<string | null>(null);
 /** 当前文件是否已完成加载与阅读位置同步；无打开文件时为 true，打开/重置会话后为 false，流结束并完成滚动后为 true */
 const readingProgressSynced = ref(true);
+
+let afterStreamFullTextInstalled: () => void | Promise<void> = async () => {};
 
 const stream = useTxtStreamPipeline({
   readerRef,
@@ -324,6 +362,7 @@ const stream = useTxtStreamPipeline({
   compressBlankLines,
   compressBlankKeepOneBlank,
   leadIndentFullWidth,
+  afterFullTextInstalled: () => afterStreamFullTextInstalled(),
 });
 
 const persistence = useAppPersistence({
@@ -359,6 +398,7 @@ const persistence = useAppPersistence({
   readerPaletteOverridesDark,
   highlightColorsLight,
   highlightColorsDark,
+  ebookConvertOutputDir,
 });
 const {
   persistSettings,
@@ -424,7 +464,7 @@ const recentFilesForMenu = computed<RecentFileItem[]>(() => {
   });
 });
 
-initPersistenceBootstrap();
+void initPersistenceBootstrap();
 
 const {
   pinActive,
@@ -496,7 +536,11 @@ const fileSession = useAppFileSession({
   restoreSessionOnStartup,
   activeStreamRequestId,
   activeStreamFilePath,
+  physicalReaderPath,
   readingProgressSynced,
+  ebookConvertOutputDir,
+  ebookParsing,
+  ebookConversionSourcePath,
 });
 
 const {
@@ -509,6 +553,13 @@ const {
   openFilePath,
   openRecentFileFromHistory,
 } = fileSession;
+
+const footerPathCaption = computed(() => {
+  if (ebookParsing.value && ebookConversionSourcePath.value) {
+    return ebookConversionSourcePath.value;
+  }
+  return physicalReaderPath.value ?? currentFile.value ?? "";
+});
 
 const chapterNav = useAppChapterNavigation({
   readerRef,
@@ -529,6 +580,13 @@ const chapterNav = useAppChapterNavigation({
   persistSettings,
   openFilePath,
 });
+
+afterStreamFullTextInstalled = async () => {
+  await readerRef.value?.applyEmbeddedImageAnchors(physicalReaderPath.value);
+  readerRef.value?.applyEbookInternalLinkMarkers?.();
+  stream.resyncMirrorFromReader();
+  chapterNav.rebuildChaptersFromCurrentText();
+};
 
 const {
   jumpToChapter,
@@ -601,7 +659,10 @@ async function applyShortcutBindings(next: ShortcutBindingMap) {
 }
 
 function revealCurrentFileInFolder() {
-  const filePath = currentFile.value;
+  const filePath =
+    physicalReaderPath.value ??
+    currentFile.value ??
+    ebookConversionSourcePath.value;
   if (!filePath) return;
   void window.colorTxt.showItemInFolder(filePath).catch(() => {});
 }
@@ -693,6 +754,7 @@ function applySettings(payload: SettingsApplyPayload) {
       Math.floor(payload.fullscreenReaderWidthPercent),
     ),
   );
+  ebookConvertOutputDir.value = payload.ebookConvertOutputDir;
   const nextFontSize = Math.max(
     minFontSize,
     Math.min(maxFontSize, Math.round(payload.fontSize)),
@@ -979,6 +1041,12 @@ useAppShellThemeWatch({
           :highlight-colors="highlightColorsForReader"
           :highlight-words-by-index="currentFileHighlightWords"
           :reader-file-path="currentFile"
+          :ebook-anchor-physical-to-display="
+            stream.physicalLineToDisplayForReader
+          "
+          :ebook-display-line-to-physical="
+            stream.viewportDisplayLineToPhysicalLine
+          "
           @probe-line-change="onProbeLineChange"
           @viewport-top-line-change="onViewportTopLineChange"
           @viewport-end-line-change="onViewportEndLineChange"
@@ -991,7 +1059,14 @@ useAppShellThemeWatch({
           class="readerIdleHint"
           aria-hidden="true"
         >
-          {{ defaultPathText }}
+          {{ defaultReaderIdleHint }}
+        </div>
+        <div
+          v-if="showReaderBusyHint"
+          class="readerIdleHint"
+          aria-live="polite"
+        >
+          {{ readerBusyHintText }}
         </div>
         <div
           v-if="showReaderEmptyHint"
@@ -1019,8 +1094,9 @@ useAppShellThemeWatch({
       <AppFooter
         :loading="loading"
         :loading-progress-percent="loadingProgressPercent"
+        :ebook-parsing="ebookParsing"
         :current-file="currentFile"
-        :path-caption="currentFile ?? ''"
+        :path-caption="footerPathCaption"
         :reading-progress-percent-part="readingProgressParts.percentPart"
         :reading-progress-detail-part="readingProgressParts.detailPart"
         :reading-progress-placeholder="readingProgressParts.placeholder"
@@ -1064,6 +1140,7 @@ useAppShellThemeWatch({
       :monaco-font-family="monacoFontFamily"
       :highlight-colors-light="highlightColorsLight"
       :highlight-colors-dark="highlightColorsDark"
+      :ebook-convert-output-dir="ebookConvertOutputDir"
       @apply-settings="applySettings"
       @apply-shortcut-bindings="applyShortcutBindings"
       @apply-chapter-rules="applyChapterMatchRules"

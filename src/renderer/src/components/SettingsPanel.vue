@@ -4,6 +4,7 @@ import AppModal from "./AppModal.vue";
 import NumericInput from "./NumericInput.vue";
 import RangeSlider from "./RangeSlider.vue";
 import SwitchToggle from "./SwitchToggle.vue";
+import PathPickerInput from "./PathPickerInput.vue";
 import {
   clampLineHeightMultipleForFontSize,
   lineHeightMultipleStep,
@@ -28,6 +29,8 @@ export type SettingsApplyPayload = {
   compressBlankKeepOneBlank: boolean;
   /** 与「内容上色」同时生效：成对引号/括号是否跨行 */
   txtrDelimitedMatchCrossLine: boolean;
+  /** 电子书转换缓存目录；清空后与源文件同目录；默认 userData */
+  ebookConvertOutputDir: string;
 };
 
 const modelValue = defineModel<boolean>({ default: false });
@@ -41,6 +44,7 @@ const props = defineProps<{
   compressBlankKeepOneBlank: boolean;
   monacoCustomHighlight: boolean;
   txtrDelimitedMatchCrossLine: boolean;
+  ebookConvertOutputDir: string;
 }>();
 
 const emit = defineEmits<{
@@ -54,6 +58,7 @@ const draftFontSize = ref(14);
 const draftLineHeightMultiple = ref(1.5);
 const draftCompressBlankKeepOneBlank = ref(false);
 const draftTxtrDelimitedMatchCrossLine = ref(false);
+const draftEbookConvertOutputDir = ref("");
 
 const draftMaxLineHeightMultiple = computed(() =>
   maxLineHeightMultipleForFontSize(draftFontSize.value),
@@ -71,6 +76,7 @@ watch(modelValue, (open) => {
   );
   draftCompressBlankKeepOneBlank.value = props.compressBlankKeepOneBlank;
   draftTxtrDelimitedMatchCrossLine.value = props.txtrDelimitedMatchCrossLine;
+  draftEbookConvertOutputDir.value = props.ebookConvertOutputDir;
 });
 
 watch(draftFontSize, (fs) => {
@@ -93,6 +99,7 @@ function onConfirm() {
     lineHeightMultiple: draftLineHeightMultiple.value,
     compressBlankKeepOneBlank: draftCompressBlankKeepOneBlank.value,
     txtrDelimitedMatchCrossLine: draftTxtrDelimitedMatchCrossLine.value,
+    ebookConvertOutputDir: draftEbookConvertOutputDir.value.trim(),
   });
 }
 
@@ -151,6 +158,21 @@ async function onClearCache() {
         <p class="settingsHint">
           最近打开文件的保留条数；设置为 0 时不记录最近打开的文件。
         </p>
+      </div>
+
+      <div class="settingsRow">
+        <div class="settingsRowMain settingsRowMain--baseline">
+          <span class="settingsLabel small">电子书转换缓存目录</span>
+          <div class="settingsEbookDirActions">
+            <PathPickerInput
+              v-model="draftEbookConvertOutputDir"
+              is-directory
+              aria-label="电子书转换缓存目录"
+              class="settingsEbookPathPicker"
+            />
+          </div>
+        </div>
+        <p class="settingsHint">打开其他格式（如 epub）的电子书时，会自动转换为 txt 格式并缓存到该目录下；如果放空，将缓存到源文件同目录下。</p>
       </div>
 
       <div class="settingsRow">
@@ -282,11 +304,31 @@ async function onClearCache() {
   align-items: baseline;
 }
 
+.settingsEbookDirActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 1 1 65%;
+  min-width: 0;
+}
+
+.settingsEbookPathPicker {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .settingsLabel {
   font-size: 14px;
   color: var(--fg);
   flex: 1 1 60%;
   min-width: 60%;
+}
+.settingsLabel.small {
+  flex: 1 1 35%;
+  min-width: 35%;
 }
 
 .settingsHint {

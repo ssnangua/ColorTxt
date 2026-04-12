@@ -124,8 +124,10 @@ export function useAppReaderUiPrefs(deps: {
       deps.persistSettings();
       return;
     }
+    const endLine =
+      deps.readerRef.value?.getViewportEndLine?.() ?? deps.viewportEndLine.value;
     const physicalP = deps.stream.viewportDisplayLineToPhysicalLine(
-      deps.viewportEndLine.value,
+      Math.max(1, Math.floor(endLine)),
     );
     deps.compressBlankLines.value = next;
     deps.persistSettings();
@@ -148,8 +150,10 @@ export function useAppReaderUiPrefs(deps: {
       deps.persistSettings();
       return;
     }
+    const endLine =
+      deps.readerRef.value?.getViewportEndLine?.() ?? deps.viewportEndLine.value;
     const physicalP = deps.stream.viewportDisplayLineToPhysicalLine(
-      deps.viewportEndLine.value,
+      Math.max(1, Math.floor(endLine)),
     );
     deps.leadIndentFullWidth.value = next;
     deps.persistSettings();

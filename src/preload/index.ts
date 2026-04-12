@@ -1,20 +1,33 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { app, contextBridge, ipcRenderer, webUtils } from "electron";
 
+/** 磁盘上被读取的文件路径（通常为 .txt） */
 export type StreamStart = {
   requestId: number;
   filePath: string;
+  /** 与阅读会话绑定的逻辑路径（如电子书原路径）；缺省则与 filePath 相同 */
+  sessionFilePath?: string;
   encoding?: string;
   totalBytes: number;
 };
 export type StreamChunkPayload = {
   requestId: number;
   filePath: string;
+  sessionFilePath?: string;
   text: string;
   readBytes: number;
   totalBytes: number;
 };
-export type StreamEnd = { requestId: number; filePath: string };
-export type StreamError = { requestId: number; filePath: string; message: string };
+export type StreamEnd = {
+  requestId: number;
+  filePath: string;
+  sessionFilePath?: string;
+};
+export type StreamError = {
+  requestId: number;
+  filePath: string;
+  sessionFilePath?: string;
+  message: string;
+};
 
 export type DirListTxtScanPayload =
   | { phase: "start"; dirPath: string }
@@ -46,6 +59,10 @@ ipcRenderer.on("app:open-txt-path", (_e, filePath: string) => {
 const api = {
   openTxtDialog: () =>
     ipcRenderer.invoke("dialog:openTxt") as Promise<string | null>,
+  openFilePlainDialog: () =>
+    ipcRenderer.invoke("dialog:openFilePlain") as Promise<string | null>,
+  openDirectoryPlainDialog: () =>
+    ipcRenderer.invoke("dialog:openDirectoryPlain") as Promise<string | null>,
   openTxtDirectoryDialog: () =>
     ipcRenderer.invoke("dialog:openTxtDirectory") as Promise<{
       dirPath: string;
@@ -76,7 +93,52 @@ const api = {
       isFile: boolean;
       isDirectory: boolean;
     }>,
-  streamFile: (filePath: string) => ipcRenderer.send("file:stream", filePath),
+  getPath: (name: string) =>
+    ipcRenderer.invoke("app:getPath", name) as Promise<string | null>,
+  getUserDataPath: () => app.getPath("userData"),
+  pathToFileUrl: (filePath: string) =>
+    ipcRenderer.invoke("path:toFileUrl", filePath) as Promise<string | null>,
+  /**
+   * 用于 `<img src>` / 灯箱：短 URL `colortxt-local://resource/{uuid}`，避免整段路径过长导致不发起请求。
+   */
+  pathToReadableLocalUrl: (filePath: string) =>
+    ipcRenderer.invoke(
+      "colortxtLocal:registerPath",
+      filePath,
+    ) as Promise<string | null>,
+  readFileAsArrayBuffer: async (filePath: string) => {
+    const data = (await ipcRenderer.invoke(
+      "file:readFileAsBuffer",
+      filePath,
+    )) as ArrayBuffer | Uint8Array;
+    if (data instanceof ArrayBuffer) return data;
+    return data.buffer.slice(
+      data.byteOffset,
+      data.byteOffset + data.byteLength,
+    ) as ArrayBuffer;
+  },
+  writeUtf8File: (filePath: string, utf8: string) =>
+    ipcRenderer.invoke("file:writeUtf8File", filePath, utf8) as Promise<{
+      ok: true;
+    }>,
+  writeBinaryFile: (filePath: string, base64: string) =>
+    ipcRenderer.invoke("file:writeBinaryFile", filePath, base64) as Promise<{
+      ok: true;
+    }>,
+  emptyDir: (dirPath: string) =>
+    ipcRenderer.invoke("fs:emptyDir", dirPath) as Promise<{ ok: true }>,
+  removePath: (targetPath: string) =>
+    ipcRenderer.invoke("fs:removePath", targetPath) as Promise<{ ok: true }>,
+  mkdir: (dirPath: string) =>
+    ipcRenderer.invoke("fs:mkdir", dirPath) as Promise<{ ok: true }>,
+  streamFile: (
+    filePath: string,
+    options?: { sessionFilePath?: string },
+  ) =>
+    ipcRenderer.send("file:stream", {
+      physicalPath: filePath,
+      sessionFilePath: options?.sessionFilePath,
+    }),
   setWindowTitle: (title: string) => ipcRenderer.send("window:setTitle", title),
   setFullscreen: (value: boolean) =>
     ipcRenderer.invoke("window:setFullscreen", value) as Promise<boolean>,

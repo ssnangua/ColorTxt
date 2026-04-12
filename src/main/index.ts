@@ -1,9 +1,24 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, protocol } from "electron";
+import { registerColortxtLocalProtocol } from "./colortxtLocalProtocol";
 import { registerMainIpcHandlers } from "./ipcHandlers";
 import { setupLaunchTxtHandlers } from "./launchTxtHandlers";
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from "./globalShortcuts";
 import { registerUpdaterIpc, setupAutoUpdater } from "./updater";
 import { createMainWindowFactory } from "./windowFactory";
+
+/** 须在 `app.ready` 之前注册，否则自定义协议无法在渲染进程用于 `<img>` 等 */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "colortxt-local",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 
 registerUpdaterIpc();
 
@@ -25,6 +40,7 @@ registerMainIpcHandlers({
 const launchTxtHandlers = setupLaunchTxtHandlers({ createWindow });
 
 app.whenReady().then(() => {
+  registerColortxtLocalProtocol();
   setupAutoUpdater();
   const launchTxt = launchTxtHandlers.resolveLaunchTxtForStartup(process.argv);
   createWindow({ openTxtPath: launchTxt });

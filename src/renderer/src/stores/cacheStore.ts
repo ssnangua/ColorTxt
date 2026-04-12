@@ -50,6 +50,17 @@ export type PersistedSettingsData = {
   highlightColorsLight?: string[];
   /** 自定义高亮色（暗色主题） */
   highlightColorsDark?: string[];
+  /**
+   * 电子书转换输出目录：空字符串表示与源书同目录。
+   * 非空时为绝对路径。若设置 JSON 中无此键，应用默认使用 `userData`。
+   */
+  ebookConvertOutputDir?: string;
+};
+
+export type PersistedSettingsLoadResult = {
+  data: PersistedSettingsData;
+  /** 持久化 JSON 是否包含 `ebookConvertOutputDir` 且为 string（含空串）；否则用 userData 作为首次默认 */
+  ebookConvertOutputDirKeyPresent: boolean;
 };
 
 export type SessionSnapshot = {
@@ -82,10 +93,13 @@ function isTxtFileItemArray(x: unknown): x is TxtFileItem[] {
 export function loadPersistedSettingsData(
   storage: Storage | undefined,
   key: string,
-): PersistedSettingsData | null {
+): PersistedSettingsLoadResult | null {
   const parsed = safeJsonParse(storage?.getItem(key));
   if (!parsed || typeof parsed !== "object") return null;
   const obj = parsed as Record<string, unknown>;
+  const ebookConvertOutputDirKeyPresent =
+    Object.prototype.hasOwnProperty.call(obj, "ebookConvertOutputDir") &&
+    typeof obj.ebookConvertOutputDir === "string";
   const data: PersistedSettingsData = {};
 
   if (obj.theme === "vs" || obj.theme === "vs-dark") data.theme = obj.theme;
@@ -179,7 +193,10 @@ export function loadPersistedSettingsData(
     const h = parseHighlightColorsArray(obj.highlightColorsDark);
     if (h) data.highlightColorsDark = h;
   }
-  return data;
+  if (typeof obj.ebookConvertOutputDir === "string") {
+    data.ebookConvertOutputDir = obj.ebookConvertOutputDir;
+  }
+  return { data, ebookConvertOutputDirKeyPresent };
 }
 
 export function persistSettingsData(

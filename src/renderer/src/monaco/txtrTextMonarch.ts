@@ -133,7 +133,6 @@ export function createTxtrTextMonarchLanguage(
       root: [
         ...bracketOpenerRules(),
         [/"/, { token: "txtr.punctuation", next: "stringDouble" }],
-        [/'/, { token: "txtr.punctuation", next: "stringSingle" }],
         [/「/, { token: "txtr.punctuation", next: "stringCorner" }],
         [/『/, { token: "txtr.punctuation", next: "stringWhite" }],
         [/\u201C/, { token: "txtr.punctuation", next: "stringLdquo" }],
@@ -147,8 +146,6 @@ export function createTxtrTextMonarchLanguage(
       ],
 
       stringDouble: rulesInsideDelimited(/"/, '"', "txtr.quoteInner", hlRules, true),
-
-      stringSingle: rulesInsideDelimited(/'/, "'", "txtr.quoteInner", hlRules, true),
 
       stringCorner: rulesInsideDelimited(/」/, "」", "txtr.quoteInner", hlRules, true),
 

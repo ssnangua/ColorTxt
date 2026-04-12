@@ -103,6 +103,8 @@ export function useAppPersistence(deps: {
   readerPaletteOverridesDark: Ref<Partial<ReaderSurfacePalette>>;
   highlightColorsLight: Ref<string[]>;
   highlightColorsDark: Ref<string[]>;
+  /** 电子书转换输出目录；空字符串表示与源文件同目录；无持久化键时默认 userData */
+  ebookConvertOutputDir: Ref<string>;
 }) {
   const settingsLoaded = ref(false);
 
@@ -310,6 +312,22 @@ export function useAppPersistence(deps: {
     return findFileMetaRecord(deps.fileMetaRecords.value, path);
   }
 
+  function setEbookConvertedMeta(
+    bookPath: string,
+    convertedTxtPath: string,
+    sourceMtimeMs: number,
+  ) {
+    deps.fileMetaRecords.value = upsertFileMetaRecord(
+      deps.fileMetaRecords.value,
+      bookPath,
+      () => ({
+        convertedTxtPath,
+        sourceMtimeMsAtConvert: sourceMtimeMs,
+      }),
+    );
+    rebuildMetaProgressMap();
+  }
+
   function upsertBookmark(path: string, line: number, note: string) {
     deps.fileMetaRecords.value = upsertBookmarkForFile(
       deps.fileMetaRecords.value,
@@ -344,12 +362,15 @@ export function useAppPersistence(deps: {
     persistRecentFiles();
   }
 
-  function loadPersistedSettings() {
-    const data = loadPersistedSettingsData(
+  function loadPersistedSettings(): { ebookConvertOutputDirKeyPresent: boolean } {
+    const loaded = loadPersistedSettingsData(
       typeof window !== "undefined" ? window.localStorage : undefined,
       persistKey,
     );
-    if (!data) return;
+    if (!loaded) {
+      return { ebookConvertOutputDirKeyPresent: false };
+    }
+    const { data, ebookConvertOutputDirKeyPresent } = loaded;
 
     if (data.theme) deps.currentTheme.value = data.theme;
 
@@ -471,6 +492,11 @@ export function useAppPersistence(deps: {
         // ignore invalid persisted patterns
       }
     }
+
+    if (typeof data.ebookConvertOutputDir === "string") {
+      deps.ebookConvertOutputDir.value = data.ebookConvertOutputDir;
+    }
+    return { ebookConvertOutputDirKeyPresent };
   }
 
   function persistSettings() {
@@ -510,6 +536,7 @@ export function useAppPersistence(deps: {
         deps.highlightColorsDark.value,
         DEFAULT_HIGHLIGHT_COLORS_DARK,
       ),
+      ebookConvertOutputDir: deps.ebookConvertOutputDir.value,
     });
   }
 
@@ -560,8 +587,11 @@ export function useAppPersistence(deps: {
     } catch {
       // ignore
     }
-    loadPersistedSettings();
+    const { ebookConvertOutputDirKeyPresent } = loadPersistedSettings();
     settingsLoaded.value = true;
+    if (!ebookConvertOutputDirKeyPresent) {
+      persistSettings();
+    }
     loadRecentFiles();
     loadFileMeta();
   }
@@ -577,6 +607,7 @@ export function useAppPersistence(deps: {
     loadFileMeta,
     persistFileMeta,
     getFileMeta,
+    setEbookConvertedMeta,
     upsertBookmark,
     removeBookmark,
     clearBookmarks,

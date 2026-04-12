@@ -1,6 +1,7 @@
 import { nextTick, onBeforeUnmount, onMounted, type Ref } from "vue";
 import type ReaderMain from "../components/ReaderMain.vue";
 import { mergeTxtFileLists } from "../services/fileListService";
+import { isSupportedBookPath } from "../ebook/ebookFormat";
 import { bindAppShortcuts } from "../services/shortcutService";
 import { hasModalOnStack } from "../utils/modalStack";
 import { useAppFileSession } from "./useAppFileSession";
@@ -204,9 +205,16 @@ export function useAppWindowBindings(deps: {
       window.alert(globalShortcutResult.message || "系统级快捷键设置失败");
     }
 
+    const streamMatchesCurrent = (payload: {
+      filePath: string;
+      sessionFilePath?: string;
+    }) =>
+      (payload.sessionFilePath ?? payload.filePath) ===
+      deps.currentFile.value;
+
     unsubscribers.push(
       window.colorTxt.onStreamStart((payload) => {
-        if (payload.filePath !== deps.currentFile.value) return;
+        if (!streamMatchesCurrent(payload)) return;
         deps.activeStreamRequestId.value = payload.requestId;
         deps.activeStreamFilePath.value = payload.filePath;
         deps.fileEncoding.value = payload.encoding || "-";
@@ -214,7 +222,7 @@ export function useAppWindowBindings(deps: {
         deps.loadingProgressPercent.value = total > 0 ? 0 : null;
       }),
       window.colorTxt.onStreamChunk((payload) => {
-        if (payload.filePath !== deps.currentFile.value) return;
+        if (!streamMatchesCurrent(payload)) return;
         if (
           deps.activeStreamRequestId.value == null ||
           payload.requestId !== deps.activeStreamRequestId.value ||
@@ -232,7 +240,8 @@ export function useAppWindowBindings(deps: {
         }
       }),
       window.colorTxt.onStreamEnd((payload) => {
-        if (payload.filePath !== deps.currentFile.value) return;
+        void (async () => {
+        if (!streamMatchesCurrent(payload)) return;
         if (
           deps.activeStreamRequestId.value == null ||
           payload.requestId !== deps.activeStreamRequestId.value ||
@@ -242,7 +251,7 @@ export function useAppWindowBindings(deps: {
         }
         deps.activeStreamRequestId.value = null;
         deps.activeStreamFilePath.value = null;
-        deps.stream.flushCarry();
+        await deps.stream.flushCarry();
         deps.loading.value = false;
         deps.loadingProgressPercent.value = null;
         const restoreVs = deps.pendingRestoreEditorViewState.value;
@@ -258,6 +267,7 @@ export function useAppWindowBindings(deps: {
         };
 
         const finishReadingSync = () => {
+          deps.readerRef.value?.normalizeScrollAfterEmbeddedViewZones?.();
           deps.pulseChapterListCenter(false);
           markReadingProgressSynced();
           deps.readerRef.value?.emitProbeLine();
@@ -300,7 +310,11 @@ export function useAppWindowBindings(deps: {
                   Math.max(1, displayLine),
                   maxDisplay,
                 );
-                reader.jumpToLine(displayLine, false);
+                if (displayLine <= 1) {
+                  reader.jumpToLine?.(1, false);
+                } else {
+                  reader.jumpToLine(displayLine, false);
+                }
                 void nextTick(finishReadingSync);
               });
             });
@@ -314,6 +328,7 @@ export function useAppWindowBindings(deps: {
             requestAnimationFrame(() => {
               deps.readerRef.value?.scrollToBottom?.(false);
               void nextTick(() => {
+                deps.readerRef.value?.normalizeScrollAfterEmbeddedViewZones?.();
                 deps.pulseChapterListCenter(false);
                 markReadingProgressSynced();
                 deps.readerRef.value?.emitProbeLine();
@@ -324,11 +339,9 @@ export function useAppWindowBindings(deps: {
         }
 
         if (restorePhys != null) {
-          if (deps.compressBlankLines.value) {
-            jumpLine = deps.stream.physicalLineToDisplayForReader(restorePhys);
-          } else {
-            jumpLine = Math.min(restorePhys, totalPhysical);
-          }
+          jumpLine = deps.stream.physicalLineToBottomDisplayForReader(
+            Math.min(restorePhys, totalPhysical),
+          );
           const maxDisplay = Math.max(1, deps.stream.getLineCount());
           jumpLine = Math.min(Math.max(1, jumpLine), maxDisplay);
         }
@@ -336,8 +349,17 @@ export function useAppWindowBindings(deps: {
         if (jumpLine != null) {
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              deps.readerRef.value?.scrollLineToBottom?.(jumpLine, false);
+              const reader = deps.readerRef.value;
+              if (reader) {
+                /** 篇首：用顶对齐 jumpToLine(1)；随后 nextTick 里 normalize 会把「篇首插图」时的 scrollTop≈top1 钳到 0。 */
+                if (jumpLine <= 1) {
+                  reader.jumpToLine?.(1, false);
+                } else {
+                  reader.scrollLineToBottom?.(jumpLine, false);
+                }
+              }
               void nextTick(() => {
+                deps.readerRef.value?.normalizeScrollAfterEmbeddedViewZones?.();
                 deps.pulseChapterListCenter(false);
                 markReadingProgressSynced();
                 deps.readerRef.value?.emitProbeLine();
@@ -346,13 +368,15 @@ export function useAppWindowBindings(deps: {
           });
         } else {
           void nextTick(() => {
+            deps.readerRef.value?.normalizeScrollAfterEmbeddedViewZones?.();
             markReadingProgressSynced();
             deps.readerRef.value?.emitProbeLine();
           });
         }
+        })();
       }),
       window.colorTxt.onStreamError((e) => {
-        if (e.filePath !== deps.currentFile.value) return;
+        if (!streamMatchesCurrent(e)) return;
         if (
           deps.activeStreamRequestId.value == null ||
           e.requestId !== deps.activeStreamRequestId.value ||
@@ -373,10 +397,12 @@ export function useAppWindowBindings(deps: {
       }),
     );
 
+    /** 使用冒泡阶段：子组件若需独占拖放，在自身 drop 里 stopPropagation */
     const onDragOver = (ev: DragEvent) => {
       ev.preventDefault();
       if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
     };
+
     const onDrop = (ev: DragEvent) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -393,59 +419,60 @@ export function useAppWindowBindings(deps: {
 
       const filePath = window.colorTxt.getPathForFile(file);
       if (!filePath) {
-        window.alert("拖放文件无法解析真实路径");
         return;
       }
 
       void (async () => {
-        const fileStat = await window.colorTxt.stat(filePath);
-        if (fileStat.isDirectory) {
-          const unsub = deps.fileSession.subscribeDirListTxtScan();
-          try {
-            const dirResult =
-              await window.colorTxt.listTxtFilesInDirectory(filePath);
-            deps.txtFiles.value = mergeTxtFileLists(
-              deps.txtFiles.value,
-              dirResult.files,
-            );
-            deps.persistFileListCache();
-            deps.sidebarTab.value = "files";
-            deps.fileSession.centerFileListIfCurrentInList();
-            if (
-              !deps.currentFile.value ||
-              !deps.txtFiles.value.some(
-                (f) => f.path === deps.currentFile.value,
-              )
-            ) {
-              deps.fileSession.scrollFileListsToIndex(0);
+        try {
+          const fileStat = await window.colorTxt.stat(filePath);
+          if (fileStat.isDirectory) {
+            const unsub = deps.fileSession.subscribeDirListTxtScan();
+            try {
+              const dirResult =
+                await window.colorTxt.listTxtFilesInDirectory(filePath);
+              deps.txtFiles.value = mergeTxtFileLists(
+                deps.txtFiles.value,
+                dirResult.files,
+              );
+              deps.persistFileListCache();
+              deps.sidebarTab.value = "files";
+              deps.fileSession.centerFileListIfCurrentInList();
+              if (
+                !deps.currentFile.value ||
+                !deps.txtFiles.value.some(
+                  (f) => f.path === deps.currentFile.value,
+                )
+              ) {
+                deps.fileSession.scrollFileListsToIndex(0);
+              }
+            } finally {
+              unsub();
+              deps.dirListScanning.value = false;
+              deps.dirListCurrentName.value = "";
             }
-          } finally {
-            unsub();
-            deps.dirListScanning.value = false;
-            deps.dirListCurrentName.value = "";
+            return;
           }
-          return;
+          if (!fileStat.isFile) {
+            return;
+          }
+          const name = file.name ?? "";
+          if (name && !isSupportedBookPath(filePath)) {
+            return;
+          }
+          void deps.fileSession.openFilePath(filePath);
+        } catch {
+          /* 静默忽略 */
         }
-        if (!fileStat.isFile) {
-          window.alert("拖放目标不是有效文件或目录");
-          return;
-        }
-        const name = file.name ?? "";
-        if (name && !name.toLowerCase().endsWith(".txt")) {
-          window.alert(`仅支持 .txt：${name}`);
-          return;
-        }
-        void deps.fileSession.openFilePath(filePath);
       })();
     };
 
-    document.addEventListener("dragover", onDragOver, true);
-    document.addEventListener("drop", onDrop, true);
+    document.addEventListener("dragover", onDragOver, false);
+    document.addEventListener("drop", onDrop, false);
     unsubscribers.push(() =>
-      document.removeEventListener("dragover", onDragOver, true),
+      document.removeEventListener("dragover", onDragOver, false),
     );
     unsubscribers.push(() =>
-      document.removeEventListener("drop", onDrop, true),
+      document.removeEventListener("drop", onDrop, false),
     );
 
     const onMouseMove = (ev: MouseEvent) => {

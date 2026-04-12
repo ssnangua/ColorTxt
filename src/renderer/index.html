@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self' ws: http://localhost:*; worker-src 'self' blob:;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: colortxt-local:; font-src 'self' data: blob:; connect-src 'self' ws: http://localhost:*; worker-src 'self' blob:;"
     />
     <title>%APP_DISPLAY_NAME%</title>
   </head>
-  <body>
+  <body spellcheck="false">
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
