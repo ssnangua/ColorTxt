@@ -627,6 +627,7 @@ function tryJumpEbookInternalLinkFromPoint(
 /**
  * 在插图 Zone 处理之后调用：去掉 `<<ID:…>>`、将 `<<A:…|…>>` 换为可见文案并加下划线。
  * 内链装饰范围用 strip 给出的**显示行**（与 Monaco 行号一致）；跳转目标 id 在压缩空行时已映为源物理行，点击时用 `ebookAnchorPhysicalToDisplay` 再映回显示行。
+ * 必须用按行 `applyEdits` 而非 `setValue`：整文替换会破坏已插入的插图 View Zone 行号绑定（EPUB 含大量 `<<ID:…>>` 时尤甚）。
  */
 function applyEbookInternalLinkMarkers() {
   disposeEbookInternalLinks();
@@ -636,10 +637,11 @@ function applyEbookInternalLinkMarkers() {
   const raw = m.getValue();
   if (!/<<(?:ID|A):/.test(raw)) return;
   beginProgrammaticScroll();
-  let { text, idToPhysicalLine, linkOccurrences } =
-    stripEbookIdAndAMarkersFromText(raw);
+  const normalized = raw.replace(/\r\n/g, "\n");
+  let { text, outLines, idToPhysicalLine, linkOccurrences } =
+    stripEbookIdAndAMarkersFromText(normalized);
   if (
-    text === raw &&
+    text === normalized &&
     idToPhysicalLine.size === 0 &&
     linkOccurrences.length === 0
   ) {
@@ -655,7 +657,27 @@ function applyEbookInternalLinkMarkers() {
     }
     idToPhysicalLine = idMap;
   }
-  m.setValue(text);
+  const lc = m.getLineCount();
+  const edits: monaco.editor.IIdentifiedSingleEditOperation[] = [];
+  for (let lineNumber = 1; lineNumber <= lc; lineNumber++) {
+    const i = lineNumber - 1;
+    const nextLine = outLines[i];
+    if (nextLine === undefined) break;
+    if (m.getLineContent(lineNumber) !== nextLine) {
+      edits.push({
+        range: new monaco.Range(
+          lineNumber,
+          1,
+          lineNumber,
+          m.getLineMaxColumn(lineNumber),
+        ),
+        text: nextLine,
+      });
+    }
+  }
+  if (edits.length > 0) {
+    m.applyEdits(edits);
+  }
   ebookAnchorIdToPhysicalLine.value = idToPhysicalLine;
   const decs: monaco.editor.IModelDeltaDecoration[] = [];
   const hits: EbookLinkHit[] = [];

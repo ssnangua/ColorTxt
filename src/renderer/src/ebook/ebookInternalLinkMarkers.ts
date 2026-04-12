@@ -148,6 +148,8 @@ function replaceAMarkersWithVisibleLabel(
 
 export type StripEbookMarkersResult = {
   text: string;
+  /** 与输入按 `\n` 分行后逐行对应，供阅读器用 `applyEdits` 替换行内标记而不 `setValue` 整文 */
+  outLines: string[];
   idToPhysicalLine: Map<string, number>;
   linkOccurrences: EbookInternalLinkOccurrence[];
 };
@@ -176,6 +178,7 @@ export function stripEbookIdAndAMarkersFromText(
 
   return {
     text: outLines.join("\n"),
+    outLines,
     idToPhysicalLine,
     linkOccurrences,
   };

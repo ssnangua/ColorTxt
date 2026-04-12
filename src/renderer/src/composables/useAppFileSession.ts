@@ -232,7 +232,7 @@ export function useAppFileSession(deps: {
     });
   }
 
-  /** 在解析/转换（如 EPUB）与 `resetSession` 之前清空阅读区，便于感知正在加载 */
+  /** 在 `resetSession` 之前清空阅读区，便于感知正在加载 */
   function clearReaderBeforeResolve() {
     deps.readerRef.value?.clear({ keepStickyHiddenForStream: true });
     deps.readerRef.value?.resetToTop();
@@ -453,7 +453,6 @@ export function useAppFileSession(deps: {
       return false;
     }
 
-    clearReaderBeforeResolve();
     const resolved = await resolvePhysicalTextForOpen(
       filePath,
       prepared.fileSize,

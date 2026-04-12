@@ -21,10 +21,12 @@
     "iconv-lite": "^0.7.2",
     "jschardet": "^3.1.4",
     "jszip": "^3.10.1",
+    "pako": "^2.1.0",
     "pdfjs-dist": "^5.6.205"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@types/pako": "^2.0.4",
     "@vitejs/plugin-vue": "^5.2.3",
     "electron": "^35.1.4",
     "electron-builder": "^26.0.12",

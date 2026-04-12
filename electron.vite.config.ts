@@ -74,6 +74,7 @@ export default defineConfig({
           "iconv-lite",
           "jschardet",
           "jszip",
+          "pako",
           "pdfjs-dist",
           "electron-updater",
         ],

@@ -63,12 +63,14 @@ export async function replaceImgAnchorLinesWithViewZones(
 ): Promise<string[]> {
   const model = editor.getModel();
   if (!model) return [];
+  /** 闭包内 TS 不保留 `model` 非空收窄，用局部常量绑定 */
+  const doc = model;
   const txtDir = dirnameFs(convertedTxtAbsPath.replace(/\\/g, "/"));
 
   const matches: { line: number; rel: string }[] = [];
-  const lc0 = model.getLineCount();
+  const lc0 = doc.getLineCount();
   for (let L = 1; L <= lc0; L++) {
-    const line = model.getLineContent(L);
+    const line = doc.getLineContent(L);
     const m = line.match(READER_IMG_ANCHOR_LINE_RE);
     if (m?.[1]?.trim()) {
       matches.push({ line: L, rel: m[1].trim() });
@@ -76,28 +78,45 @@ export async function replaceImgAnchorLinesWithViewZones(
   }
   if (matches.length === 0) return [];
 
+  const imgLineSet = new Set(matches.map((x) => x.line));
+
   function deletedBefore(row: number): number {
     return matches.filter((x) => x.line < row).length;
+  }
+
+  /**
+   * 删去所有 `<<IMG:…>>` 行后，View Zone 应插在该插图**上一行非插图内容**之后。
+   * 只向上跳过其它插图锚点行；**不要**跳过「上图、空行、下图」里的空行，否则在
+   * 「正文—空—图1—空—图2」结构下会把图2 错锚到图1 上方的空行，造成整篇越往后越错位。
+   * 任意非插图行（正文或空行）在删行后的行号均为 `k - deletedBefore(k)`。
+   */
+  function afterLineNumberForImgMatch(match: { line: number }): number {
+    let k = match.line - 1;
+    while (k >= 1 && imgLineSet.has(k)) {
+      k -= 1;
+    }
+    if (k < 1) return 0;
+    return k - deletedBefore(k);
+  }
+
+  /** 必须在 `applyEdits` 之前算好：`getLineContent(k)` 用的是删行前的行号 */
+  const zoneSpecs: { afterLineNumber: number; absPath: string }[] = [];
+  for (const m of matches.slice().sort((a, b) => a.line - b.line)) {
+    const abs = joinUnderDir(txtDir, m.rel.replace(/\\/g, "/"));
+    zoneSpecs.push({
+      afterLineNumber: afterLineNumberForImgMatch(m),
+      absPath: abs,
+    });
   }
 
   const edits = matches
     .slice()
     .sort((a, b) => b.line - a.line)
     .map((m) => ({
-      range: lineDeleteRange(monacoApi, model, m.line),
+      range: lineDeleteRange(monacoApi, doc, m.line),
       text: "",
     }));
-  model.applyEdits(edits);
-
-  const zoneSpecs: { afterLineNumber: number; absPath: string }[] = [];
-  for (const m of matches.slice().sort((a, b) => a.line - b.line)) {
-    const abs = joinUnderDir(txtDir, m.rel.replace(/\\/g, "/"));
-    const afterLineNumber = Math.max(
-      0,
-      m.line - 1 - deletedBefore(m.line - 1),
-    );
-    zoneSpecs.push({ afterLineNumber, absPath: abs });
-  }
+  doc.applyEdits(edits);
 
   const withUrls = await Promise.all(
     zoneSpecs.map(async (z) => ({
@@ -114,7 +133,7 @@ export async function replaceImgAnchorLinesWithViewZones(
       const afterLineNumber = z.afterLineNumber;
       const afterColumn =
         afterLineNumber > 0
-          ? model.getLineMaxColumn(afterLineNumber)
+          ? doc.getLineMaxColumn(afterLineNumber)
           : undefined;
       const dom = document.createElement("div");
       dom.className = "readerImageViewZone";

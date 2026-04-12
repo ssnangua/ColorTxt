@@ -50,7 +50,6 @@ import {
   defaultShowChapterCounts,
   defaultShowSidebar,
   emptyFileHintText,
-  readerEbookConvertingHintText,
   readerTxtLoadingHintText,
   GITHUB_REPO_URL,
   maxFullscreenReaderWidthPercent,
@@ -176,30 +175,18 @@ const {
   pulseBookmarkListCenter,
 } = chapterSync;
 /** 阅读区无打开文件且未在加载/转换时，居中显示 defaultReaderIdleHint */
-const showReaderIdleHint = computed(
-  () =>
-    !currentFile.value && !loading.value && !ebookParsing.value,
-);
-/** 电子书转换或正文流尚未写入行时，复用 `.readerIdleHint` 居中提示 */
+const showReaderIdleHint = computed(() => !currentFile.value && !loading.value);
+/** 电子书正文流尚未写入行时，复用 `.readerIdleHint` 居中提示 */
 const showReaderBusyHint = computed(
   () =>
-    ebookParsing.value ||
-    (!ebookParsing.value &&
-      loading.value &&
-      totalLineCount.value === 0 &&
-      totalCharCount.value === 0),
+    loading.value && totalLineCount.value === 0 && totalCharCount.value === 0,
 );
-const readerBusyHintText = computed(() =>
-  ebookParsing.value
-    ? readerEbookConvertingHintText
-    : readerTxtLoadingHintText,
-);
+const readerBusyHintText = computed(() => readerTxtLoadingHintText);
 /** 已打开文件且流式加载完成、正文行数与字数均为 0 时居中提示 */
 const showReaderEmptyHint = computed(
   () =>
     Boolean(currentFile.value) &&
     !loading.value &&
-    !ebookParsing.value &&
     totalCharCount.value === 0 &&
     totalLineCount.value === 0,
 );
@@ -256,9 +243,7 @@ const ebookConversionSourcePath = ref<string | null>(null);
 const readerPaletteOverridesLight = ref<Partial<ReaderSurfacePalette>>({});
 const readerPaletteOverridesDark = ref<Partial<ReaderSurfacePalette>>({});
 
-const highlightColorsLight = ref<string[]>([
-  ...DEFAULT_HIGHLIGHT_COLORS_LIGHT,
-]);
+const highlightColorsLight = ref<string[]>([...DEFAULT_HIGHLIGHT_COLORS_LIGHT]);
 const highlightColorsDark = ref<string[]>([...DEFAULT_HIGHLIGHT_COLORS_DARK]);
 
 const readerSurfaceLight = computed(() =>
@@ -891,8 +876,7 @@ useAppShellThemeWatch({
     class="app"
     :class="{
       fullscreen: isFullscreenView,
-      'fullscreen--cursorHidden':
-        isFullscreenView && fullscreenCursorHidden,
+      'fullscreen--cursorHidden': isFullscreenView && fullscreenCursorHidden,
     }"
   >
     <div

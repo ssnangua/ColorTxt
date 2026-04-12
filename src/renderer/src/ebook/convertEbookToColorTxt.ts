@@ -7,6 +7,7 @@ import {
 import { convertEpubToArtifacts, tryConvertZipAsEpub } from "./parseEpub";
 import { convertFb2ToArtifacts } from "./parseFb2";
 import { convertPdfToArtifacts } from "./parsePdf";
+import { convertMobiToArtifacts } from "./parseMobi";
 import { dirnameFs, joinFs } from "./pathUtils";
 import { yieldToUi } from "./yieldToUi";
 
@@ -110,9 +111,7 @@ export async function convertBookBufferToArtifacts(
   if (lower.endsWith(".mobi")) {
     const zipEpub = await tryConvertZipAsEpub(buffer, outputBase);
     if (zipEpub) return zipEpub;
-    throw new Error(
-      "标准 MOBI（非 KF8 ZIP）暂不支持，请将电子书转为 EPUB 后再试。",
-    );
+    return convertMobiToArtifacts(buffer, outputBase);
   }
 
   if (lower.endsWith(".fb2")) {
