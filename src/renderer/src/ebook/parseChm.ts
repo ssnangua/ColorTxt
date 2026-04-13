@@ -1,4 +1,3 @@
-import iconv from "iconv-lite";
 import type { ColorTxtArtifacts } from "./ebookTypes";
 import { escapeEbookMarkerPayload } from "./ebookInternalLinkMarkers";
 import { ChmArchive } from "./chm/chmArchive";
@@ -36,10 +35,14 @@ function resolveChmPath(currentPosix: string, href: string): string {
 }
 
 function decodeBytesAsGbChinese(bytes: Uint8Array): string {
-  if (iconv.encodingExists("gb18030")) {
-    return iconv.decode(bytes, "gb18030");
+  for (const label of ["gb18030", "gbk"] as const) {
+    try {
+      return new TextDecoder(label, { fatal: false }).decode(bytes);
+    } catch {
+      /* 运行时不支持该编码标签时换下一个 */
+    }
   }
-  return iconv.decode(bytes, "gbk");
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 }
 
 /**
