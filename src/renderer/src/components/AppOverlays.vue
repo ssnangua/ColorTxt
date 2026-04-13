@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { inject, ref, type ComponentPublicInstance } from "vue";
+import {
+  computed,
+  inject,
+  onBeforeUnmount,
+  ref,
+  watch,
+  type ComponentPublicInstance,
+} from "vue";
 import type { ChapterMatchRule } from "../chapter";
 import { bookmarkNoteInputRefKey } from "../injectionKeys";
 import type { FileBookmarkItem } from "../stores/fileMetaStore";
@@ -12,10 +19,11 @@ import SettingsPanel, { type SettingsApplyPayload } from "./SettingsPanel.vue";
 import ShortcutPanel from "./ShortcutPanel.vue";
 import type { ShortcutBindingMap } from "../services/shortcutRegistry";
 import type { ReaderSurfacePalette } from "../constants/appUi";
+import { readerEbookConvertingHintText } from "../constants/appUi";
 
 const bookmarkNoteInputRef = inject(bookmarkNoteInputRefKey)!;
 
-defineProps<{
+const props = defineProps<{
   restoreSessionOnStartup: boolean;
   recentFilesHistoryLimit: number;
   fullscreenReaderWidthPercent: number;
@@ -30,6 +38,7 @@ defineProps<{
   activeBookmarkInViewport: FileBookmarkItem | null;
   dirListScanning: boolean;
   dirListCurrentName: string;
+  ebookParsing: boolean;
   shortcutBindings: ShortcutBindingMap;
   defaultShortcutBindings: ShortcutBindingMap;
   currentTheme: string;
@@ -79,6 +88,8 @@ const bookmarkNoteInput = defineModel<string>("bookmarkNoteInput", {
 });
 
 const appUpdateFlowRef = ref<InstanceType<typeof AppUpdateFlow> | null>(null);
+const convertingDotCount = ref(0);
+let convertingDotTimer: number | null = null;
 
 defineExpose({
   checkForUpdates: () => appUpdateFlowRef.value?.checkForUpdates(),
@@ -97,6 +108,39 @@ function onBookmarkNoteKeydown(e: KeyboardEvent) {
   e.preventDefault();
   emit("confirmAddBookmark");
 }
+
+const convertingHintText = computed(() => {
+  const baseText = readerEbookConvertingHintText.replace(/[.…]+$/u, "");
+  return `${baseText}${".".repeat(convertingDotCount.value)}`;
+});
+
+watch(
+  () => props.ebookParsing,
+  (parsing) => {
+    if (parsing) {
+      convertingDotCount.value = 0;
+      if (convertingDotTimer == null) {
+        convertingDotTimer = window.setInterval(() => {
+          convertingDotCount.value = (convertingDotCount.value + 1) % 4;
+        }, 360);
+      }
+      return;
+    }
+    convertingDotCount.value = 0;
+    if (convertingDotTimer != null) {
+      window.clearInterval(convertingDotTimer);
+      convertingDotTimer = null;
+    }
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  if (convertingDotTimer != null) {
+    window.clearInterval(convertingDotTimer);
+    convertingDotTimer = null;
+  }
+});
 </script>
 
 <template>
@@ -197,13 +241,17 @@ function onBookmarkNoteKeydown(e: KeyboardEvent) {
 
   <Transition name="dirScanOverlay">
     <div
-      v-if="dirListScanning"
+      v-if="dirListScanning || ebookParsing"
       class="dirScanOverlay"
       aria-live="polite"
       aria-busy="true"
     >
       <p class="dirScanLine" :title="dirListCurrentName">
-        {{ dirListCurrentName || "准备中…" }}
+        {{
+          ebookParsing
+            ? convertingHintText
+            : dirListCurrentName || "准备中…"
+        }}
       </p>
     </div>
   </Transition>

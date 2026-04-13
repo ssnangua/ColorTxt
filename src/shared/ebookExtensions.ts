@@ -6,6 +6,7 @@ export const EBOOK_DOT_EXTENSIONS = [
   ".fb2",
   ".fbz",
   ".pdf",
+  ".chm",
 ] as const;
 
 export function isSupportedShellOpenPath(filePath: string): boolean {

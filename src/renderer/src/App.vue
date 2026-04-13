@@ -1116,6 +1116,7 @@ useAppShellThemeWatch({
       :active-bookmark-in-viewport="activeBookmarkInViewport"
       :dir-list-scanning="dirListScanning"
       :dir-list-current-name="dirListCurrentName"
+      :ebook-parsing="ebookParsing"
       :shortcut-bindings="shortcutBindings"
       :default-shortcut-bindings="defaultShortcutBindings"
       :current-theme="currentTheme"

@@ -7,6 +7,7 @@ import { convertEpubToArtifacts, tryConvertZipAsEpub } from "./parseEpub";
 import { convertFb2ToArtifacts } from "./parseFb2";
 import { convertPdfToArtifacts } from "./parsePdf";
 import { convertMobiToArtifacts } from "./parseMobi";
+import { convertChmToArtifacts } from "./parseChm";
 import { dirnameFs, joinFs } from "./pathUtils";
 import { yieldToUi } from "./yieldToUi";
 
@@ -120,6 +121,9 @@ export async function convertBookBufferToArtifacts(
   }
   if (lower.endsWith(".pdf")) {
     return convertPdfToArtifacts(buffer, outputBase);
+  }
+  if (lower.endsWith(".chm")) {
+    return convertChmToArtifacts(buffer, outputBase);
   }
 
   throw new Error("不支持的电子书格式。");
