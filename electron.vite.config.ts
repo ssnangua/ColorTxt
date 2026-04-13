@@ -75,6 +75,9 @@ export default defineConfig({
     },
   },
   preload: {
+    resolve: {
+      alias: sharedResolveAlias,
+    },
     build: {
       outDir: "dist/preload",
       lib: {

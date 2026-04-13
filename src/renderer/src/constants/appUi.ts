@@ -51,6 +51,12 @@ export const fileMetaKey = "colorTxt.file.meta";
 export const skipUnloadPersistenceSessionKey = "colorTxt.skipUnloadPersistence";
 
 /**
+ * 恢复界面默认并刷新前写入 sessionStorage；卸载时若存在则跳过写入 {@link persistKey}，
+ * 避免 `beforeunload` / `pagehide` 把内存中的旧界面设置写回已清除项。
+ */
+export const skipSettingsPersistenceSessionKey = "colorTxt.skipSettingsPersistence";
+
+/**
  * 无本地设置或与 {@link persistKey} 对应字段缺失时的初始值。
  * 修改默认体验时只改此处（及组件 prop 的 withDefaults，若需一致）。
  */

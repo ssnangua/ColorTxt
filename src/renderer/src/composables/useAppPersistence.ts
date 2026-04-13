@@ -55,11 +55,37 @@ import {
   persistKey,
   recentFilesKey,
   sessionKey,
+  skipSettingsPersistenceSessionKey,
   skipUnloadPersistenceSessionKey,
   type ReaderSurfacePalette,
 } from "../constants/appUi";
+import { EBOOK_CONVERT_DEFAULT_SUBDIR } from "@shared/ebookConvertPaths";
 import type { ShortcutBindingMap } from "../services/shortcutRegistry";
 import { mergeShortcutBindings } from "../services/shortcutUtils";
+import { joinFs } from "../ebook/pathUtils";
+
+/** 同步 preload 路径偶发不可用（如极早时机）时用主进程 IPC 兜底，避免首次把空目录写入设置后永久固化 */
+async function resolveDefaultEbookConvertOutputDir(): Promise<string> {
+  try {
+    const p = window.colorTxt?.getDefaultEbookConvertOutputDir?.();
+    if (typeof p === "string") {
+      const t = p.trim();
+      if (t) return t;
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    const q = await window.colorTxt?.getPath?.("userData");
+    if (typeof q === "string") {
+      const t = q.trim();
+      if (t) return joinFs(t, EBOOK_CONVERT_DEFAULT_SUBDIR);
+    }
+  } catch {
+    // ignore
+  }
+  return "";
+}
 
 type StreamApi = {
   viewportDisplayLineToPhysicalLine: (displayLine: number) => number;
@@ -103,7 +129,7 @@ export function useAppPersistence(deps: {
   readerPaletteOverridesDark: Ref<Partial<ReaderSurfacePalette>>;
   highlightColorsLight: Ref<string[]>;
   highlightColorsDark: Ref<string[]>;
-  /** 电子书转换输出目录；空字符串表示与源文件同目录；无持久化键时默认 userData */
+  /** 电子书转换输出目录；空字符串表示与源文件同目录；无持久化键时默认 userData/ConvertedTxt */
   ebookConvertOutputDir: Ref<string>;
 }) {
   const settingsLoaded = ref(false);
@@ -501,6 +527,16 @@ export function useAppPersistence(deps: {
 
   function persistSettings() {
     if (!settingsLoaded.value) return;
+    try {
+      if (
+        typeof sessionStorage !== "undefined" &&
+        sessionStorage.getItem(skipSettingsPersistenceSessionKey) === "1"
+      ) {
+        return;
+      }
+    } catch {
+      // ignore
+    }
     persistSettingsData(window.localStorage, persistKey, {
       theme: deps.currentTheme.value === "vs" ? "vs" : "vs-dark",
       sidebarWidth: deps.sidebarWidth.value,
@@ -581,15 +617,22 @@ export function useAppPersistence(deps: {
     flushRecentFilesAndFileMetaToDisk();
   }
 
-  function initPersistenceBootstrap() {
+  async function initPersistenceBootstrap() {
     try {
       sessionStorage.removeItem(skipUnloadPersistenceSessionKey);
+      sessionStorage.removeItem(skipSettingsPersistenceSessionKey);
     } catch {
       // ignore
     }
     const { ebookConvertOutputDirKeyPresent } = loadPersistedSettings();
     settingsLoaded.value = true;
     if (!ebookConvertOutputDirKeyPresent) {
+      try {
+        const ud = await resolveDefaultEbookConvertOutputDir();
+        if (ud) deps.ebookConvertOutputDir.value = ud;
+      } catch {
+        // ignore
+      }
       persistSettings();
     }
     loadRecentFiles();

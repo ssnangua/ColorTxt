@@ -225,11 +225,11 @@ const recentFilesHistoryLimit = ref(defaultRecentFilesHistoryLimit);
 const monacoAdvancedWrapping = ref(defaultMonacoAdvancedWrapping);
 /** 全屏时阅读区域宽度（百分比） */
 const fullscreenReaderWidthPercent = ref(defaultFullscreenReaderWidthPercent);
-/** 电子书转换缓存目录；默认 userData；设置里清空则为与源文件同目录 */
+/** 电子书转换缓存目录；默认 userData/ConvertedTxt；设置里清空则为与源文件同目录 */
 const ebookConvertOutputDir = ref(
   (() => {
     try {
-      return window.colorTxt.getUserDataPath();
+      return window.colorTxt.getDefaultEbookConvertOutputDir();
     } catch {
       return "";
     }
@@ -449,7 +449,9 @@ const recentFilesForMenu = computed<RecentFileItem[]>(() => {
   });
 });
 
-void initPersistenceBootstrap();
+void initPersistenceBootstrap().catch(() => {
+  // 启动引导失败时不阻断应用；目录兜底见 useAppPersistence
+});
 
 const {
   pinActive,

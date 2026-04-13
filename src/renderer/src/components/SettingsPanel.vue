@@ -16,6 +16,7 @@ import {
   minFullscreenReaderWidthPercent,
   minLineHeightMultiple,
   persistKey,
+  skipSettingsPersistenceSessionKey,
   skipUnloadPersistenceSessionKey,
 } from "../constants/appUi";
 
@@ -29,7 +30,7 @@ export type SettingsApplyPayload = {
   compressBlankKeepOneBlank: boolean;
   /** 与「内容上色」同时生效：成对引号/括号是否跨行 */
   txtrDelimitedMatchCrossLine: boolean;
-  /** 电子书转换缓存目录；清空后与源文件同目录；默认 userData */
+  /** 电子书转换缓存目录；清空后与源文件同目录；默认 userData/ConvertedTxt */
   ebookConvertOutputDir: string;
 };
 
@@ -101,6 +102,22 @@ function onConfirm() {
     txtrDelimitedMatchCrossLine: draftTxtrDelimitedMatchCrossLine.value,
     ebookConvertOutputDir: draftEbookConvertOutputDir.value.trim(),
   });
+}
+
+async function onRestoreDefaults() {
+  const ok = await window.colorTxt.confirmResetUiSettings();
+  if (!ok) return;
+  try {
+    sessionStorage.setItem(skipSettingsPersistenceSessionKey, "1");
+  } catch {
+    // ignore
+  }
+  try {
+    localStorage.removeItem(persistKey);
+  } catch {
+    // ignore
+  }
+  window.location.reload();
 }
 
 async function onClearCache() {
@@ -254,14 +271,24 @@ async function onClearCache() {
 
     <template #footer>
       <div class="settingsFooter">
-        <button
-          class="btn warning"
-          type="button"
-          size="large"
-          @click="onClearCache"
-        >
-          清除缓存
-        </button>
+        <div class="settingsFooterLeft">
+          <button
+            class="btn"
+            type="button"
+            size="large"
+            @click="onRestoreDefaults"
+          >
+            恢复默认
+          </button>
+          <button
+            class="btn warning"
+            type="button"
+            size="large"
+            @click="onClearCache"
+          >
+            清除缓存
+          </button>
+        </div>
         <div class="settingsFooterActions">
           <button class="btn" type="button" size="large" @click="onCancel">
             取消
@@ -346,6 +373,13 @@ async function onClearCache() {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+}
+
+.settingsFooterLeft {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .settingsFooterActions {

@@ -1,4 +1,12 @@
 import { app, contextBridge, ipcRenderer, webUtils } from "electron";
+import { EBOOK_CONVERT_DEFAULT_SUBDIR } from "@shared/ebookConvertPaths";
+
+/** sandbox 下 preload 不可 require('path')，与 renderer 的 joinFs 行为对齐 */
+function joinUserDataSubdir(userData: string, segment: string): string {
+  const base = userData.replace(/[/\\]+$/, "");
+  const sep = base.includes("\\") ? "\\" : "/";
+  return `${base}${sep}${segment.replace(/^[/\\]+|[/\\]+$/g, "")}`;
+}
 
 /** 磁盘上被读取的文件路径（通常为 .txt） */
 export type StreamStart = {
@@ -76,6 +84,8 @@ const api = {
     ipcRenderer.invoke("dialog:confirmClearBookmarks") as Promise<boolean>,
   confirmClearAppCache: () =>
     ipcRenderer.invoke("dialog:confirmClearAppCache") as Promise<boolean>,
+  confirmResetUiSettings: () =>
+    ipcRenderer.invoke("dialog:confirmResetUiSettings") as Promise<boolean>,
   listTxtFilesInDirectory: (dirPath: string) =>
     ipcRenderer.invoke("dir:listTxtFiles", dirPath) as Promise<{
       dirPath: string;
@@ -95,7 +105,21 @@ const api = {
     }>,
   getPath: (name: string) =>
     ipcRenderer.invoke("app:getPath", name) as Promise<string | null>,
-  getUserDataPath: () => app.getPath("userData"),
+  getUserDataPath: () => {
+    try {
+      return app.getPath("userData");
+    } catch {
+      return "";
+    }
+  },
+  /** 默认电子书转 txt 输出目录：`userData/ConvertedTxt` */
+  getDefaultEbookConvertOutputDir: () => {
+    try {
+      return joinUserDataSubdir(app.getPath("userData"), EBOOK_CONVERT_DEFAULT_SUBDIR);
+    } catch {
+      return "";
+    }
+  },
   pathToFileUrl: (filePath: string) =>
     ipcRenderer.invoke("path:toFileUrl", filePath) as Promise<string | null>,
   /**

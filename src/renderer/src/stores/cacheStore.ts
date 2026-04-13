@@ -52,14 +52,14 @@ export type PersistedSettingsData = {
   highlightColorsDark?: string[];
   /**
    * 电子书转换输出目录：空字符串表示与源书同目录。
-   * 非空时为绝对路径。若设置 JSON 中无此键，应用默认使用 `userData`。
+   * 非空时为绝对路径。若设置 JSON 中无此键，应用默认使用 `userData/ConvertedTxt`。
    */
   ebookConvertOutputDir?: string;
 };
 
 export type PersistedSettingsLoadResult = {
   data: PersistedSettingsData;
-  /** 持久化 JSON 是否包含 `ebookConvertOutputDir` 且为 string（含空串）；否则用 userData 作为首次默认 */
+  /** 持久化 JSON 是否包含 `ebookConvertOutputDir` 且为 string（含空串）；否则用 userData/ConvertedTxt 作为首次默认 */
   ebookConvertOutputDirKeyPresent: boolean;
 };
 

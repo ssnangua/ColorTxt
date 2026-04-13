@@ -329,7 +329,27 @@ export function registerMainIpcHandlers(
       cancelId: 0,
       message: "是否清除应用缓存？",
       detail:
-        "将删除会话、最近打开、文件列表、书签与阅读进度等本地数据；界面设置（字号、主题等）将保留。清除后窗口会重新加载。",
+        "将删除会话、最近打开、文件列表、书签与阅读进度等本地数据；界面设置（字号、主题、配色等）将保留。清除后窗口会重新加载。",
+      noLink: true,
+    };
+    const result = win
+      ? await dialog.showMessageBox(win, options)
+      : await dialog.showMessageBox(options);
+    return result.response === 1;
+  });
+
+  ipcMain.removeHandler("dialog:confirmResetUiSettings");
+  ipcMain.handle("dialog:confirmResetUiSettings", async (evt) => {
+    const win = BrowserWindow.fromWebContents(evt.sender);
+    const options: MessageBoxOptions = {
+      type: "warning",
+      title: APP_DISPLAY_NAME,
+      buttons: ["取消", "恢复默认"],
+      defaultId: 1,
+      cancelId: 0,
+      message: "是否将界面恢复为初始状态？",
+      detail:
+        "将重置所有界面相关的设置（字号、主题、配色等）；会话、文件相关的数据将保留。恢复后窗口会重新加载。",
       noLink: true,
     };
     const result = win

@@ -170,7 +170,7 @@ src/
 │       │   ├── chapterIndex.ts   # 当前视口行号对应的章节下标（二分查找）
 │       │   └── lineMapping.ts    # 物理行号与「滤空后显示行」的映射工具
 │       ├── ebook/                # 电子书 → ColorTxt：解析为 UTF-8 正文与可选插图资源（与 `shared/ebookExtensions.ts` 扩展名一致）
-│       │   ├── convertEbookToColorTxt.ts   # 按扩展名调度各解析器；`{basename}.txt` 输出路径、userData/源目录缓存查找与写出
+│       │   ├── convertEbookToColorTxt.ts   # 按扩展名调度各解析器；`ensureEbookColorTxt`：严格 meta 缓存、`findReconciledConvertedTxt` 和解查找、写出 `{basename}.txt`
 │       │   ├── ebookFormat.ts    # 是否电子书路径、与 TXT 合并的「支持书籍路径」、输出基名与文件名净化等
 │       │   ├── ebookTypes.ts     # 转换产物类型（如 `ColorTxtArtifacts`：正文 + 可选 `imageWrites`）
 │       │   ├── pathUtils.ts      # 路径拼接与规范化（POSIX 风格片段，供转换与资源相对路径）
@@ -207,7 +207,8 @@ src/
 │       └── workers/              # Web Worker（预留目录；用于耗时任务 offload 等）
 └── shared/
     ├── packageDerived.ts         # 从 package 信息派生的共享元数据（主/渲染共用）
-    └── ebookExtensions.ts        # 电子书扩展名常量与壳层打开路径判定
+    ├── ebookExtensions.ts        # 电子书扩展名常量与壳层打开路径判定
+    └── ebookConvertPaths.ts      # 默认转换输出子目录名 `ConvertedTxt`（`userData/ConvertedTxt`，与 preload 拼接一致）
 ```
 
 #### `src/main/`（主进程）
@@ -276,7 +277,7 @@ src/
 
 - 使用 `contextBridge` 暴露 `window.colorTxt`，封装 `invoke` / `send` / `on`，避免渲染进程直接使用 Node API。
 - 文件对话框与目录扫描（含扫描进度订阅）、`file:stat`、流式读文件事件（`file:stream-*`）、外链与系统字体列表等。
-- 破坏性操作前的确认：`confirmClearRecentFiles`、`confirmClearFileList`、`confirmClearBookmarks`、`confirmClearAppCache`（对应主进程 `dialog:confirmClear*`）。
+- 破坏性操作前的确认：`confirmClearRecentFiles`、`confirmClearFileList`、`confirmClearBookmarks`、`confirmClearAppCache`、`confirmResetUiSettings`（对应主进程 `dialog:confirmClear*` / `dialog:confirmResetUiSettings`）。
 - 窗口与系统集成：`openNewWindow`、`toggleDevTools`、`quitApp`、`setWindowTitle`、`setFullscreen`，以及全屏/主题相关事件（如 `onFullscreenChanged`、`onThemeSync`）。
 - 会话与启动打开：`shouldRestoreSession`、`consumePendingOpenTxtPath`，以及 `onOpenTxtFromShell`（命令行/系统关联打开 txt 的路径回调）。
 - **应用更新**：`checkForUpdates` / `downloadUpdate` / `quitAndInstall` 及 `onUpdater*` 事件订阅（含 `onUpdaterDownloadProgress`；打包环境下生效）。
@@ -304,7 +305,7 @@ src/
 | `ColorSchemePanel.vue`                               | 配色弹窗容器：`ColorSchemeTabBar` + 上述两面板；确定时分别 `applyReaderPalettes` 与 **`applyHighlightColors`**（亮/暗各一套数组）写回 `App.vue` 并经 `useAppPersistence` 落盘；打开时从 props 同步草稿                                                                                                                                                                                                                                                                |
 | `HexColorPickerField.vue`                            | 单行十六进制颜色 + HSV 取色浮层（智能上下翻转、视口贴边）；`draftHex` / `draftEnd` 事件供父组件在弹层打开期间做临时预览                                                                                                                                                                                                                                                                                                                                               |
 | `MoreMenu.vue`                                       | 更多菜单：最近文件、查找、快捷键、设置、**配色**（动作 `openColorScheme`，默认 **F6**）、检查更新、关于、退出等；菜单项右侧快捷键文案来自 **`shortcutBindings`**，经 `shortcutUtils.acceleratorToDisplayText` 与快捷键面板及 `shortcutService` 实际生效绑定同步                                                                                                                                                                                                       |
-| `SettingsPanel.vue`                                  | 设置弹窗：启动恢复会话、历史条数、字号/行高、压缩空行保留一行、全屏正文区宽度、**电子书转换缓存目录**（`ebookConvertOutputDir`；默认 `userData`，放空则与源书同目录）等（**高级换行策略**仅在顶栏切换，见 `AppHeader.vue`）；确定后与 `App.vue` 持久化并同步阅读器；**footer 左侧「清除缓存」**（主进程确认框）清空除 `colorTxt.ui.settings` 外的其它 `localStorage` 数据并刷新窗口（见下文「清除缓存」）                                                                                                                                                     |
+| `SettingsPanel.vue`                                  | 设置弹窗：启动恢复会话、历史条数、字号/行高、压缩空行保留一行、全屏正文区宽度、**电子书转换缓存目录**（`ebookConvertOutputDir`；默认 **`userData/ConvertedTxt`**，放空则与源书同目录）等（**高级换行策略**仅在顶栏切换，见 `AppHeader.vue`）；确定后与 `App.vue` 持久化并同步阅读器；footer 左侧 **「恢复默认」**（仅清除 `colorTxt.ui.settings` 并刷新）、**「清除缓存」**（保留界面设置、清除其余 `localStorage` 并刷新，见下文）                                                                                                                                                     |
 | `NumericInput.vue`                                   | 通用数字输入：可选 `min` / `max`、整数模式                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `RangeSlider.vue`                                    | 通用范围滑块（最小/最大值与步进）                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `SwitchToggle.vue`                                   | 通用开关控件                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -317,7 +318,7 @@ src/
 
 ## 电子书解析与转换（`src/renderer/src/ebook`）
 
-渲染进程在**打开电子书**时将其转为 UTF-8 的 ColorTxt 正文（`.txt`），可选写出插图目录；转换与缓存逻辑集中在 `ebook/`，与 `shared/ebookExtensions.ts` 中的扩展名列表保持一致（主进程目录扫描、壳层打开路径判定也依赖该共享模块）。
+渲染进程在**打开电子书**时将其转为 UTF-8 的 ColorTxt 正文（`.txt`），可选写出插图目录；转换与缓存逻辑集中在 `ebook/`，与 `shared/ebookExtensions.ts` 中的扩展名列表、`shared/ebookConvertPaths.ts` 中的默认输出子目录名保持一致（主进程目录扫描、壳层打开路径判定依赖前者）。
 
 ### 支持的格式与入口
 
@@ -343,10 +344,10 @@ src/
 
 ### 输出路径与缓存
 
-- **目标 `.txt` 路径**：`resolveConvertedTxtOutputPaths`：基名为源文件名整段（如 `abc.epub` → `abc.epub.txt`）。`ebookConvertOutputDir`（设置项，持久化在 `colorTxt.ui.settings`）**非空**时输出到该目录；**空字符串**表示与**源书同目录**。
-- **缓存命中**：`ensureEbookColorTxt` 若 `file.meta` 中 `convertedTxtPath` + `sourceMtimeMsAtConvert` 与当前源文件 `mtimeMs` 一致且文件仍存在，则直接复用，不再解析。
-- **回退查找**：当 meta 路径失效但源 `mtime` 未变时，按顺序在 **`userData`** 与 **源书所在目录** 查找同名 `{basename}.txt`（`findExistingConvertedTxtInUserDataOrSourceDir`），命中则复用并依赖后续 `setEbookConvertedMeta` 写回 meta。
-- **打开时的实际读取路径**：`useAppFileSession.resolvePhysicalTextForOpen` 对电子书先 `ensureEbookColorTxt`，再对流式管道使用转换后的 `physicalPath`；`physicalReaderPath` 与 `currentFile`（逻辑上书路径）可能不同，会话与最近打开仍以**源书路径**为键。
+- **目标 `.txt` 路径（写入与严格缓存的参照）**：`resolveConvertedTxtOutputPaths`：基名为源文件名整段（经 `ebookSourceFileBaseForOutput` 净化，如 `abc.epub` → `abc.epub.txt`）。`ebookConvertOutputDir`（设置项，持久化在 `colorTxt.ui.settings`）**非空**时输出到该目录；**空字符串**表示与**源书同目录**。新安装或设置里尚无该键时，默认目录为 **`app.getPath("userData")/ConvertedTxt`**（目录名见 `shared/ebookConvertPaths.ts`，preload `getDefaultEbookConvertOutputDir`）。
+- **严格缓存命中**：`ensureEbookColorTxt` 若 `file.meta` 中 **`convertedTxtPath` 与当前策略算出的目标路径一致**（与 `resolveConvertedTxtOutputPaths` 结果逐路径规范化比较）、**`sourceMtimeMsAtConvert` 与当前源文件 `mtimeMs` 一致**，且对该路径 `stat` 仍为普通文件，则直接复用，不再解析。
+- **和解查找（路径无效统一处理）**：把 **meta 中无 `convertedTxtPath`（空或未写入）** 视为「路径无效」的一种，与「有路径但严格缓存未通过」共用同一套逻辑。仅当 **无记录路径** 或 **记录的源 mtime 与当前源 `mtimeMs` 一致（`mtimeStable`）** 时才执行和解，避免源书已更新仍去复用旧的 `{basename}.txt`。实现为 **`findReconciledConvertedTxt`**：候选路径经规范化去重后依次 `stat`，**第一个存在的普通文件**即作为转换结果复用。候选顺序为：**若 `mtimeStable` 且 meta 中曾有非空路径，则优先该路径**（例如输出目录设置变更后旧文件仍留在原记录路径）；然后 **当前设置的输出目录**（非空时）下的 `{basename}.txt`；**源书同目录**下的 `{basename}.txt`；**默认 `userData/ConvertedTxt`** 下同名文件。无命中则进入完整转换：`readBookAsArrayBuffer` → `convertBookBufferToArtifacts` → `writeEbookConversionArtifacts`（写出路径为当前策略下的 `convertedTxtPath`）。
+- **meta 写回与打开路径**：`useAppFileSession.resolvePhysicalTextForOpen` 在 `ensureEbookColorTxt` 后调用 `setEbookConvertedMeta` 写入 `convertedTxtPath` 与 `sourceMtimeMsAtConvert` 并 `persistFileMeta`。对流式管道使用的 `physicalPath` 为上述转换后的 `.txt`；**逻辑上书路径**仍为源电子书路径，`currentFile` / 会话 / 最近打开以**源书路径**为键。
 
 ### 内链标记与阅读器衔接
 
@@ -457,10 +458,10 @@ src/
 
 | 键名                    | 大致内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `colorTxt.ui.settings`  | 界面与阅读偏好：字体、字号与行高倍数，空行压缩/行首缩进、高级换行、内容着色，**`monacoCustomHighlight`**（是否启用自定义高亮词管线），**`highlightColorsLight` / `highlightColorsDark`**（自定义高亮色 `#RRGGBB` 数组，长度不足 `MIN_HIGHLIGHT_COLORS` 时解析失败则回退默认；与默认逐项相同可不写入），章节匹配规则、主题、侧栏是否展开，侧栏的宽度、章节字数显示，设置里的启动是否恢复会话、最近文件条数上限、全屏正文区宽度，**`ebookConvertOutputDir`**（电子书转换生成的 `{basename}.txt` 输出目录；空串表示与源书同目录，首次无该键时默认指向 `userData`，见 `useAppPersistence`），**可选字段 `shortcutBindings`**（各快捷键动作 ID → 快捷键字符串，缺省则使用 `shortcutRegistry` 默认）等（结构见 `PersistedSettingsData`），**`readerPaletteOverridesLight` / `readerPaletteOverridesDark`**（阅读器表面色，由 `ColorSchemePanel` 确定后写入）等（结构见 `PersistedSettingsData` / `cacheStore.ts`） |
+| `colorTxt.ui.settings`  | 界面与阅读偏好：字体、字号与行高倍数，空行压缩/行首缩进、高级换行、内容着色，**`monacoCustomHighlight`**（是否启用自定义高亮词管线），**`highlightColorsLight` / `highlightColorsDark`**（自定义高亮色 `#RRGGBB` 数组，长度不足 `MIN_HIGHLIGHT_COLORS` 时解析失败则回退默认；与默认逐项相同可不写入），章节匹配规则、主题、侧栏是否展开，侧栏的宽度、章节字数显示，设置里的启动是否恢复会话、最近文件条数上限、全屏正文区宽度，**`ebookConvertOutputDir`**（电子书转换生成的 `{basename}.txt` 输出目录；空串表示与源书同目录，首次无该键时默认 **`userData/ConvertedTxt`**，见 `useAppPersistence` / `getDefaultEbookConvertOutputDir`），**可选字段 `shortcutBindings`**（各快捷键动作 ID → 快捷键字符串，缺省则使用 `shortcutRegistry` 默认）等（结构见 `PersistedSettingsData`），**`readerPaletteOverridesLight` / `readerPaletteOverridesDark`**（阅读器表面色，由 `ColorSchemePanel` 确定后写入）等（结构见 `PersistedSettingsData` / `cacheStore.ts`） |
 | `colorTxt.session`      | 会话快照：当前文件路径、视口底部物理行号（`viewportBottomLine`，用于下次启动恢复阅读位置；是否恢复受设置项控制；章节列表在重新打开文件后由流式解析生成）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `colorTxt.file.list`    | 导入目录后的 txt 文件列表缓存（路径、显示名、大小等）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `colorTxt.file.meta`    | 按文件路径聚合的元数据：书签、阅读进度百分比、**Monaco `saveViewState()` 序列化结果**（`editorViewState`）、**视口首行物理行号**（`viewportTopPhysicalLine`，与视图状态同时写入，用于压缩空行映射校验）、**`highlightWordsByIndex`**（高亮色槽位索引 → 该文件下自定义词字符串数组，与 `fileMetaStore` 规范化/合并 API 配合）；**电子书**：**`convertedTxtPath`**（上次成功转换得到的 `.txt` 绝对路径）、**`sourceMtimeMsAtConvert`**（写入上述路径时源电子书 `mtimeMs`，与 `ensureEbookColorTxt` 缓存失效一致）、`updatedAt` 等（结构见 `FileMetaRecord` / `fileMetaStore.ts`）                                                                                                                                                                                                                                                                                                                                                       |
+| `colorTxt.file.meta`    | 按文件路径聚合的元数据：书签、阅读进度百分比、**Monaco `saveViewState()` 序列化结果**（`editorViewState`）、**视口首行物理行号**（`viewportTopPhysicalLine`，与视图状态同时写入，用于压缩空行映射校验）、**`highlightWordsByIndex`**（高亮色槽位索引 → 该文件下自定义词字符串数组，与 `fileMetaStore` 规范化/合并 API 配合）；**电子书**：**`convertedTxtPath`**（当前使用的转换结果 `.txt` 绝对路径）、**`sourceMtimeMsAtConvert`**（记录该路径时源电子书 `mtimeMs`；与 `ensureEbookColorTxt` 中严格缓存与是否允许和解查找一致）、`updatedAt` 等（结构见 `FileMetaRecord` / `fileMetaStore.ts`）                                                                                                                                                                                                                                                                                                                                                       |
 | `colorTxt.recent.files` | 最近打开记录：JSON 数组，每项**仅允许** `{ "path": "<文件路径>" }` 单键对象（MRU 顺序）；条数上限由设置决定（0～1000，默认 20，0 表示不记录）。阅读进度与视口恢复一律查 `colorTxt.file.meta`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 阅读进度口径说明：
@@ -498,6 +499,11 @@ src/
 - **作用**：在设置弹窗 footer 左侧点击「清除缓存」，经主进程 **`dialog:confirmClearAppCache`** 确认后，仅保留 **`colorTxt.ui.settings`**（界面与阅读偏好：字体、主题、章节规则、快捷键绑定等），删除 **`colorTxt.session`**、**`colorTxt.file.list`**、**`colorTxt.recent.files`**、**`colorTxt.file.meta`** 等其余键，然后 **`window.location.reload()`** 重新加载渲染进程。
 - **为何需要 `sessionStorage` 标记**：窗口在 `pagehide` / `beforeunload` 时会调用 `persistWindowUnloadState()`，把内存中的会话、文件列表、最近打开和 meta 写回磁盘。若在 `localStorage.clear()` 之后直接刷新，卸载事件仍会执行，**会把清缓存前的内存状态再次写入**，导致「清不干净」。实现上在清存储前设置 **`sessionStorage`** 键 **`colorTxt.skipUnloadPersistence`**（常量名 `skipUnloadPersistenceSessionKey`，定义于 `constants/appUi.ts`），使 **`persistWindowUnloadState()`** 在卸载时**直接返回**，不再写会话/列表/meta；卸载流程里仍会调用 **`persistSettings()`**，只更新 `colorTxt.ui.settings`，与「仅保留界面设置」一致。
 - **新页加载**：`useAppPersistence` 的 **`initPersistenceBootstrap()`** 开头会 **`removeItem`** 清除上述标记，避免后续正常关窗时误跳过落盘。
+
+### 恢复默认（设置面板）
+
+- **作用**：与「清除缓存」相反——仅删除 **`colorTxt.ui.settings`**（界面与阅读偏好），**保留** `colorTxt.session`、`colorTxt.file.list`、`colorTxt.file.meta`、`colorTxt.recent.files` 等；经主进程 **`dialog:confirmResetUiSettings`** 确认后 **`localStorage.removeItem(persistKey)`** 并 **`window.location.reload()`**。
+- **为何需要另一 `sessionStorage` 标记**：卸载时仍会执行 **`persistSettings()`**（在 `persistWindowUnloadState` 之后），会把内存中的旧界面设置写回，抵消刚删的键。实现上在刷新前设置 **`colorTxt.skipSettingsPersistence`**（`skipSettingsPersistenceSessionKey`），使 **`persistSettings()`** 直接返回；**不**设置 `skipUnloadPersistence`，会话与 meta 等仍正常落盘。新页 **`initPersistenceBootstrap()`** 开头与 `skipUnloadPersistence` 一并 **`removeItem`** 清除。
 
 ### 主进程用户数据目录
 
