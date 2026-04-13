@@ -332,8 +332,8 @@ src/
 
 `ebookFormat.ts` 提供 `isEbookFilePath`、`isSupportedBookPath`（TXT + 上述扩展名）、输出用基名 `ebookSourceFileBaseForOutput`（含 Windows 非法字符净化 `sanitizeWindowsFilenameSegment`）。拖放 / 关联打开时 `useAppWindowBindings` 用 `isSupportedBookPath` 过滤；主进程 `ipcHandlers` 的目录枚举用 `EBOOK_DOT_EXTENSIONS` 与 `.txt` 一并收集。
 
-- `.chm` 格式的解析是基于 [libmspack](https://github.com/kyz/libmspack)（GNU GPL）做的 JavaScript 实现
-- 其他电子书格式的解析主要参考 [foliate-js](https://github.com/johnfactotum/foliate-js)（MIT）
+- 基于 [libmspack](https://github.com/kyz/libmspack)（GNU GPL）移植了一套 JavaScript 实现，以支持对 `.chm` 格式的解析
+- 其他电子书格式的解析，主要参考 [foliate-js](https://github.com/johnfactotum/foliate-js)（MIT）
 
 ### 转换管线与输出布局
 

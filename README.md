@@ -2,6 +2,8 @@
 
 一款会给内容上色的 **本地 TXT 小说阅读器**，带给你不一样的阅读体验！还有章节识别、空行压缩、行首缩进、摸鱼快捷键等功能。支持 **macOS**、**Windows** 和 **Linux**。
 
+> 也支持打开常见的电子书格式（`.epub`/`.mobi`/`.azw3`/`.fb2`/`.fbz`/`.pdf`/`.chm`），打开时会转换为 `.txt` 进行加载。
+
 <img src="./images/screenshot.jpg" width="600">
 
 > 基于 Electron + Vue 3 + TypeScript + Monaco Editor 实现。
@@ -9,6 +11,7 @@
 ## 功能特性
 
 - 本地文件阅读：可打开单个 `.txt` 文件，也可以导入整个目录（会递归读取子目录）。
+- 支持其他格式：支持打开常见的电子书格式（如 `.epub`），打开时会转换为 `.txt` 进行加载。
 - 流式读取文件：按块读取内容，降低大文件一次性加载的压力。
 - 自动编码识别：`UTF-8` 和 `ANSI` 都能正常打开。
 - **自动章节识别**：内置常用的章节匹配规则，也支持自定义匹配规则。
@@ -27,6 +30,12 @@
 - 支持**主题切换**：内置明亮和暗黑两种主题。
 - 支持多个窗口：可同时打开多个窗口。
 - **摸鱼快捷键**：摸鱼时可以快速隐藏阅读器。
+
+### 关于「其他电子书格式」的支持
+
+支持打开常见的电子书格式（`.epub`/`.mobi`/`.azw3`/`.fb2`/`.fbz`/`.pdf`/`.chm`），打开时会转换为 `.txt` 进行加载。
+
+**说明**：会舍弃掉电子书自带的样式，只提取里面的文本进行展示，这是「内容上色」的前提，想要在带有各种样式的条件下精准匹配到目标文本进行上色，基本不可能。
 
 ### 关于「摸鱼快捷键」
 
@@ -71,3 +80,5 @@
 - 内置的 `京華老宋体` 仅供学习交流使用，商用请购买正版字体
 - 基于 [jschardet](https://github.com/aadsm/jschardet) 检测编码，配合 [iconv-lite](https://github.com/pillarjs/iconv-lite) 进行解码
 - 使用 [font-list](https://github.com/oldj/node-font-list) 获取系统字体列表
+- 基于 [libmspack](https://github.com/kyz/libmspack) 移植了一套 JavaScript 实现，以支持对 `.chm` 格式的解析
+- 其他电子书格式的解析，主要参考 [foliate-js](https://github.com/johnfactotum/foliate-js)
