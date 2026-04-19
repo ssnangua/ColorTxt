@@ -43,8 +43,8 @@ function escapeForNegatedClass(closeChar: string): string {
 
 /**
  * 兜底：不含闭符、换行、数字、拉丁（含全角拉丁）。
- * 这里必须“单字符推进”而非 `+` 贪婪段匹配，否则会把「前缀+关键词」整段吞掉，
- * 使关键词规则（txtr.customHighlight.*）无法在中间位置命中。
+ * 这里必须“单字符推进”而非 `+` 贪婪段匹配，否则会把「前缀+高亮词」整段吞掉，
+ * 使高亮词规则（txtr.customHighlight.*）无法在中间位置命中。
  * 引号内额外排除括号开符，保证 `《…》` 能进入 bracket 子状态。
  */
 function innerRestRe(
@@ -52,16 +52,13 @@ function innerRestRe(
   stopBeforeBracketOpeners: boolean,
 ): RegExp {
   const e = escapeForNegatedClass(closeChar);
-  const noBracketOpen =
-    stopBeforeBracketOpeners
-      ? "《<＜（【〖｛\\[\\(\\{"
-      : "";
-  return new RegExp(
-    `[^${e}\\r\\n0-9${LATIN_LETTERS_BMP}${noBracketOpen}]`,
-  );
+  const noBracketOpen = stopBeforeBracketOpeners
+    ? "《<＜（【〖｛\\[\\(\\{"
+    : "";
+  return new RegExp(`[^${e}\\r\\n0-9${LATIN_LETTERS_BMP}${noBracketOpen}]`);
 }
 
-/** 与 root 一致；在引号内须排在自定义高亮词之后，避免 `《` 抢在关键词匹配之前进入括号状态 */
+/** 与 root 一致；在引号内须排在自定义高亮词之后，避免 `《` 抢在高亮词匹配之前进入括号状态 */
 function bracketOpenerRules(): monaco.languages.IMonarchLanguageRule[] {
   return [
     [/《/, { token: "txtr.punctuation", next: "bracketBook" }],
@@ -78,7 +75,7 @@ function bracketOpenerRules(): monaco.languages.IMonarchLanguageRule[] {
 }
 
 /**
- * 引号/括号内侧：自定义高亮词优先于引号/括号内侧兜底；引号内再在关键词之后尝试括号开符，以便「《书名》」仍为 bracketInner。
+ * 引号/括号内侧：自定义高亮词优先于引号/括号内侧兜底；引号内再在高亮词之后尝试括号开符，以便「《书名》」仍为 bracketInner。
  * 数字、英文、标点优先于 innerRest；txtr.quoteInner / txtr.bracketInner 仅兜底（优先级最低）。
  */
 function rulesInsideDelimited(
@@ -98,10 +95,7 @@ function rulesInsideDelimited(
     [NUMBER, "txtr.number"],
     [LATIN_WORD, "txtr.english"],
     [PUNCTUATION_CLASS, "txtr.punctuation"],
-    [
-      innerRestRe(closeChar, bracketOpenersInQuote),
-      innerToken,
-    ],
+    [innerRestRe(closeChar, bracketOpenersInQuote), innerToken],
   ];
 }
 
@@ -109,19 +103,18 @@ function rulesInsideDelimited(
  * `includeLF: true` 时行尾 \\n 可匹配，未闭合的引号/括号在换行处 @pop（不跨行）。
  * `includeLF: false` 时成对符号可跨行（由设置「引号/括号匹配支持跨行」与「内容上色」共同决定）。
  * 标点 token 仅在 root 匹配；引号内为 txtr.quoteInner；成对括号内为 txtr.bracketInner。
- * root 先括号开符再关键词；引号内先关键词再括号开符，故关键词优先于引号内侧、括号开符仍优先于纯引号内兜底。
+ * root 先括号开符再高亮词；引号内先高亮词再括号开符，故高亮词优先于引号内侧、括号开符仍优先于纯引号内兜底。
  */
 export function createTxtrTextMonarchLanguage(
   highlight?: TxtrMonarchHighlightOptions,
   /** 为 true 时成对引号/括号可跨行（Monarch includeLF: false） */
   delimitedMatchCrossLine = false,
 ): monaco.languages.IMonarchLanguage {
-  const hl =
-    highlight ?? {
-      enabled: false,
-      highlightColorsLength: 0,
-      highlightWordsByIndex: undefined,
-    };
+  const hl = highlight ?? {
+    enabled: false,
+    highlightColorsLength: 0,
+    highlightWordsByIndex: undefined,
+  };
   const hlRules = buildTxtrCustomHighlightMonarchRules(hl);
   const crossLineEffective = Boolean(hl.enabled) && delimitedMatchCrossLine;
 
@@ -145,11 +138,29 @@ export function createTxtrTextMonarchLanguage(
         [/./, ""],
       ],
 
-      stringDouble: rulesInsideDelimited(/"/, '"', "txtr.quoteInner", hlRules, true),
+      stringDouble: rulesInsideDelimited(
+        /"/,
+        '"',
+        "txtr.quoteInner",
+        hlRules,
+        true,
+      ),
 
-      stringCorner: rulesInsideDelimited(/」/, "」", "txtr.quoteInner", hlRules, true),
+      stringCorner: rulesInsideDelimited(
+        /」/,
+        "」",
+        "txtr.quoteInner",
+        hlRules,
+        true,
+      ),
 
-      stringWhite: rulesInsideDelimited(/』/, "』", "txtr.quoteInner", hlRules, true),
+      stringWhite: rulesInsideDelimited(
+        /』/,
+        "』",
+        "txtr.quoteInner",
+        hlRules,
+        true,
+      ),
 
       stringLdquo: rulesInsideDelimited(
         /\u201D/,
@@ -167,7 +178,12 @@ export function createTxtrTextMonarchLanguage(
         true,
       ),
 
-      bracketBook: rulesInsideDelimited(/》/, "》", "txtr.bracketInner", hlRules),
+      bracketBook: rulesInsideDelimited(
+        /》/,
+        "》",
+        "txtr.bracketInner",
+        hlRules,
+      ),
 
       bracketAngleAscii: rulesInsideDelimited(
         />/,
@@ -204,9 +220,19 @@ export function createTxtrTextMonarchLanguage(
         hlRules,
       ),
 
-      bracketCjk: rulesInsideDelimited(/】/, "】", "txtr.bracketInner", hlRules),
+      bracketCjk: rulesInsideDelimited(
+        /】/,
+        "】",
+        "txtr.bracketInner",
+        hlRules,
+      ),
 
-      bracketFancy: rulesInsideDelimited(/〗/, "〗", "txtr.bracketInner", hlRules),
+      bracketFancy: rulesInsideDelimited(
+        /〗/,
+        "〗",
+        "txtr.bracketInner",
+        hlRules,
+      ),
 
       bracketCurlyAscii: rulesInsideDelimited(
         /\}/,

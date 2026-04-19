@@ -69,7 +69,9 @@ export function useAppBookmarkPins(deps: {
       (() => {
         const probeTick = deps.lastProbeLine.value;
         const top = deps.readerRef.value?.getViewportTopLine?.();
-        return typeof top === "number" && Number.isFinite(top) ? top : probeTick;
+        return typeof top === "number" && Number.isFinite(top)
+          ? top
+          : probeTick;
       })(),
     ),
   );
@@ -135,6 +137,14 @@ export function useAppBookmarkPins(deps: {
     pinnedScrollTop.value = Math.max(0, top);
   }
 
+  /** 与手动点亮书钉一致；已激活或不可钉时不修改。 */
+  function ensurePinBeforeRevealFindWidget() {
+    if (pinnedScrollTop.value !== null) return;
+    if (!canPin.value) return;
+    const top = deps.readerRef.value?.getScrollTop?.() ?? 0;
+    pinnedScrollTop.value = Math.max(0, top);
+  }
+
   function onGoBackFromPin() {
     const top = pinnedScrollTop.value;
     if (top == null) return;
@@ -162,9 +172,7 @@ export function useAppBookmarkPins(deps: {
     const path = deps.currentFile.value;
     if (!path) return;
     const line = editingBookmarkLine.value ?? viewportTopPhysicalLine.value;
-    const note = bookmarkNoteInput.value
-      .replace(/\r?\n/g, " ")
-      .trim();
+    const note = bookmarkNoteInput.value.replace(/\r?\n/g, " ").trim();
     deps.upsertBookmark(path, line, note);
     editingBookmarkLine.value = null;
     addBookmarkOpen.value = false;
@@ -232,6 +240,7 @@ export function useAppBookmarkPins(deps: {
     bookmarkActive,
     bookmarkListItems,
     onPinClick,
+    ensurePinBeforeRevealFindWidget,
     onGoBackFromPin,
     onBookmarkClick,
     confirmAddBookmark,

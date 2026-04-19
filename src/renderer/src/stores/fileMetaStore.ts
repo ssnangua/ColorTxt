@@ -8,7 +8,7 @@ export type FileBookmarkItem = {
 /** Monaco `saveViewState()` 的 JSON 形态，按路径持久化在 meta 中 */
 export type PersistedEditorViewState = Record<string, unknown>;
 
-/** 自定义高亮词：键为索引字符串 `"0"`,`"1"`…，值为该索引下关键词（仅存索引不存色值） */
+/** 自定义高亮词：键为索引字符串 `"0"`,`"1"`…，值为该索引下高亮词（仅存索引不存色值） */
 export type HighlightWordsByIndex = Record<string, string[]>;
 
 export type FileMetaRecord = {
@@ -30,7 +30,7 @@ export type FileMetaRecord = {
    */
   viewportTopPhysicalLine?: number;
   bookmarks: FileBookmarkItem[];
-  /** 按高亮色索引分组的关键词；索引越界时阅读器忽略该桶 */
+  /** 按高亮色索引分组的高亮词；索引越界时阅读器忽略该桶 */
   highlightWordsByIndex?: HighlightWordsByIndex;
   /**
    * 应用内最后一次打开该文件（阅读器开始加载该会话路径）的时间戳（ms）。
@@ -64,7 +64,9 @@ export function fileNameKey(filePath: string) {
   return fileName.toLowerCase();
 }
 
-function normalizeBookmark(item: Partial<FileBookmarkItem>): FileBookmarkItem | null {
+function normalizeBookmark(
+  item: Partial<FileBookmarkItem>,
+): FileBookmarkItem | null {
   if (typeof item.line !== "number" || !Number.isFinite(item.line)) return null;
   const line = Math.max(1, Math.floor(item.line));
   const note = typeof item.note === "string" ? item.note.trim() : "";
@@ -143,7 +145,9 @@ function normalizeRecord(item: Partial<FileMetaRecord>): FileMetaRecord | null {
       bookmarkMap.set(normalized.line, normalized);
     }
   }
-  const bookmarks = Array.from(bookmarkMap.values()).sort((a, b) => a.line - b.line);
+  const bookmarks = Array.from(bookmarkMap.values()).sort(
+    (a, b) => a.line - b.line,
+  );
   const highlightWordsByIndex = normalizeHighlightWordsByIndex(
     item.highlightWordsByIndex,
   );
@@ -212,7 +216,9 @@ export function persistFileMetaRecords(
 
 export function findFileMetaRecord(items: FileMetaRecord[], path: string) {
   const fullKey = normalizeFileMetaPathKey(path);
-  const exact = items.find((it) => normalizeFileMetaPathKey(it.path) === fullKey);
+  const exact = items.find(
+    (it) => normalizeFileMetaPathKey(it.path) === fullKey,
+  );
   if (exact) return exact;
   const nameKey = fileNameKey(path);
   return items.find((it) => it.fileName === nameKey);
@@ -285,7 +291,9 @@ export function upsertBookmarkForFile(
   const now = Date.now();
   return upsertFileMetaRecord(items, path, (prev) => {
     const base = prev?.bookmarks ?? [];
-    const map = new Map<number, FileBookmarkItem>(base.map((it) => [it.line, it]));
+    const map = new Map<number, FileBookmarkItem>(
+      base.map((it) => [it.line, it]),
+    );
     const prevBookmark = map.get(line);
     map.set(line, {
       line,
@@ -322,7 +330,7 @@ export function appendHighlightTermForFile(
   return assignHighlightTermToColorForFile(items, path, colorIndex, text);
 }
 
-/** 将关键词归到指定高亮色：先从所有索引桶中移除同一词，再写入目标桶（一词仅属一个索引） */
+/** 将高亮词归到指定高亮色：先从所有索引桶中移除同一词，再写入目标桶（一词仅属一个索引） */
 export function assignHighlightTermToColorForFile(
   items: FileMetaRecord[],
   path: string,
@@ -349,7 +357,7 @@ export function assignHighlightTermToColorForFile(
   });
 }
 
-/** 从所有高亮色桶中移除该关键词（与存储项字符串全等匹配） */
+/** 从所有高亮色桶中移除该高亮词（与存储项字符串全等匹配） */
 export function removeHighlightTermFromFile(
   items: FileMetaRecord[],
   path: string,
@@ -369,8 +377,7 @@ export function removeHighlightTermFromFile(
     }
     if (!changed) return {};
     return {
-      highlightWordsByIndex:
-        Object.keys(base).length > 0 ? base : undefined,
+      highlightWordsByIndex: Object.keys(base).length > 0 ? base : undefined,
     };
   });
 }

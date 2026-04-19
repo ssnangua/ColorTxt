@@ -18,7 +18,7 @@ function readerThemeEditorColors(palette: ReaderSurfacePalette) {
   };
 }
 
-/** 与 txtrTextMonarch 一致：quoteInner / bracketInner 为兜底；引号内先自定义高亮再括号开符，故关键词优先于 quoteInner */
+/** 与 txtrTextMonarch 一致：quoteInner / bracketInner 为兜底；引号内先自定义高亮再括号开符，故高亮词优先于 quoteInner */
 function buildTxtrTokenRules(
   palette: ReaderSurfacePalette,
   highlightColors: readonly string[],

@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import IconButton from "./IconButton.vue";
 import FontPicker from "./FontPicker.vue";
 import MoreMenu from "./MoreMenu.vue";
 import { icons } from "../icons";
 import type { ShortcutBindingMap } from "../services/shortcutRegistry";
+import { APP_CHROME_POPOVER_Z_INDEX } from "../utils/modalStack";
 
 /** 仅路径；阅读进度由 `file.meta` 提供（菜单侧由父组件合并） */
 export type RecentFileItem = { path: string; progress?: number };
@@ -83,11 +91,47 @@ const emit = defineEmits<{
   goBackFromPin: [];
   bookmarkClick: [];
   removeHighlightTerm: [text: string];
+  /** 点击高亮词项：父组件应钉书钉（若未钉）并打开 Monaco 查找该词 */
+  findHighlightTerm: [text: string];
 }>();
 
 const highlightMenuOpen = ref(false);
 const highlightMenuRootEl = ref<HTMLElement | null>(null);
+const highlightMenuBodyRef = ref<HTMLElement | null>(null);
+/** 与 AppCustomSelect 一致：仅在实际出现纵向滚动条时加右侧内边距 */
+const highlightMenuBodyHasScrollbar = ref(false);
+let highlightMenuBodyResizeObserver: ResizeObserver | null = null;
+
 const hasHighlightTerms = computed(() => props.highlightTerms.length > 0);
+
+/** 须高于 ReaderMain `.hlFloatRoot`（5980），否则高亮笔尖会盖住顶栏菜单 */
+const highlightPickerWrapStyle = computed(() =>
+  highlightMenuOpen.value ? { zIndex: APP_CHROME_POPOVER_Z_INDEX } : {},
+);
+
+function updateHighlightMenuScrollbarFlag() {
+  const el = highlightMenuBodyRef.value;
+  if (!el) {
+    highlightMenuBodyHasScrollbar.value = false;
+    return;
+  }
+  highlightMenuBodyHasScrollbar.value = el.scrollHeight - el.clientHeight > 0.5;
+}
+
+function bindHighlightMenuBodyResizeObserver() {
+  unbindHighlightMenuBodyResizeObserver();
+  const el = highlightMenuBodyRef.value;
+  if (!el) return;
+  highlightMenuBodyResizeObserver = new ResizeObserver(() => {
+    updateHighlightMenuScrollbarFlag();
+  });
+  highlightMenuBodyResizeObserver.observe(el);
+}
+
+function unbindHighlightMenuBodyResizeObserver() {
+  highlightMenuBodyResizeObserver?.disconnect();
+  highlightMenuBodyResizeObserver = null;
+}
 
 function toggleHighlightMenu() {
   highlightMenuOpen.value = !highlightMenuOpen.value;
@@ -103,6 +147,10 @@ function onRemoveHighlightTermClick(ev: MouseEvent, text: string) {
   emit("removeHighlightTerm", text);
 }
 
+function onHighlightItemClick(text: string) {
+  emit("findHighlightTerm", text);
+}
+
 const onPointerDown = (ev: PointerEvent) => {
   if (!highlightMenuOpen.value) return;
   const root = highlightMenuRootEl.value;
@@ -112,11 +160,35 @@ const onPointerDown = (ev: PointerEvent) => {
   closeHighlightMenu();
 };
 
+watch(highlightMenuOpen, async (open) => {
+  if (open) {
+    await nextTick();
+    updateHighlightMenuScrollbarFlag();
+    bindHighlightMenuBodyResizeObserver();
+    requestAnimationFrame(() => {
+      updateHighlightMenuScrollbarFlag();
+    });
+  } else {
+    unbindHighlightMenuBodyResizeObserver();
+    highlightMenuBodyHasScrollbar.value = false;
+  }
+});
+
+watch(
+  () => props.highlightTerms.length,
+  async () => {
+    if (!highlightMenuOpen.value) return;
+    await nextTick();
+    updateHighlightMenuScrollbarFlag();
+  },
+);
+
 onMounted(() => {
   document.addEventListener("pointerdown", onPointerDown, true);
 });
 
 onBeforeUnmount(() => {
+  unbindHighlightMenuBodyResizeObserver();
   document.removeEventListener("pointerdown", onPointerDown, true);
 });
 </script>
@@ -153,7 +225,11 @@ onBeforeUnmount(() => {
           :disabled="!bookmarkActive && !canBookmark"
           @click="emit('bookmarkClick')"
         />
-        <div ref="highlightMenuRootEl" class="highlightPicker">
+        <div
+          ref="highlightMenuRootEl"
+          class="highlightPicker"
+          :style="highlightPickerWrapStyle"
+        >
           <IconButton
             :icon-html="icons.highlightMark"
             multicolor
@@ -169,7 +245,14 @@ onBeforeUnmount(() => {
             role="menu"
             @click.stop
           >
-            <div class="highlightMenuBody">
+            <div
+              ref="highlightMenuBodyRef"
+              class="highlightMenuBody"
+              :class="{
+                'highlightMenuBody--scrollbarPad':
+                  highlightMenuBodyHasScrollbar,
+              }"
+            >
               <div v-if="!hasHighlightTerms" class="highlightEmpty">
                 当前文件暂无高亮词
               </div>
@@ -178,10 +261,14 @@ onBeforeUnmount(() => {
                   v-for="item in highlightTerms"
                   :key="`${item.colorIndex}-${item.text}`"
                   class="highlightItem"
+                  role="menuitem"
+                  tabindex="0"
                   :style="{
                     backgroundColor: highlightPreviewBg,
                     fontFamily: monacoFontFamily,
                   }"
+                  @click="onHighlightItemClick(item.text)"
+                  @keydown.enter.prevent="onHighlightItemClick(item.text)"
                 >
                   <span
                     class="highlightText"
@@ -193,11 +280,14 @@ onBeforeUnmount(() => {
                   <button
                     type="button"
                     class="highlightRemoveBtn"
-                    title="移除关键词"
-                    aria-label="移除关键词"
+                    title="移除高亮词"
+                    aria-label="移除高亮词"
                     @click="onRemoveHighlightTermClick($event, item.text)"
                   >
-                    <span class="highlightRemoveIcon" v-html="icons.close"></span>
+                    <span
+                      class="highlightRemoveIcon"
+                      v-html="icons.close"
+                    ></span>
                   </button>
                 </div>
               </div>
@@ -355,12 +445,18 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+/* 弹层高于同块内笔尖按钮，避免 transform 子层与按钮层叠错乱 */
+.highlightPicker > :deep(.iconBtn) {
+  position: relative;
+  z-index: 0;
+}
+
 .highlightMenu {
   position: absolute;
   top: 38px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 200;
+  z-index: 2;
   min-width: 100px;
   max-width: 200px;
   overflow: visible;
@@ -373,7 +469,14 @@ onBeforeUnmount(() => {
 
 .highlightMenuBody {
   max-height: min(50vh, 420px);
+  min-height: 0;
   overflow: auto;
+  box-sizing: border-box;
+}
+
+/* 有纵向滚动条时与轨道留白；无条时不加此类（同 AppCustomSelect `.customSelectScroll--scrollbarPad`） */
+.highlightMenuBody--scrollbarPad {
+  padding-right: 6px;
 }
 
 .highlightMenu::before,
@@ -414,6 +517,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
 }
 
 .highlightText {

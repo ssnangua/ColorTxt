@@ -21,6 +21,9 @@ const SHIFT_NEUTRAL_BY_CODE: Record<string, string> = {
   Digit9: "9",
   Minus: "-",
   Equal: "=",
+  /** 与 `Equal` 相同记号，匹配默认 `Ctrl+=` 加大字号，并避免 `key` 为 `+` 时拼出 `Control++` 破坏 `+` 分隔解析 */
+  NumpadAdd: "=",
+  NumpadSubtract: "-",
   BracketLeft: "[",
   BracketRight: "]",
   Backslash: "\\",

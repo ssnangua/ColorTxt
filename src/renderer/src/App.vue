@@ -545,6 +545,7 @@ const {
   bookmarkActive,
   bookmarkListItems,
   onPinClick,
+  ensurePinBeforeRevealFindWidget,
   onGoBackFromPin,
   onBookmarkClick,
   confirmAddBookmark,
@@ -807,6 +808,10 @@ function onRemoveHighlightTermFromHeader(text: string) {
   onRemoveHighlightTerm({ text });
 }
 
+function onFindHighlightTermFromHeader(text: string) {
+  readerRef.value?.openFindWithSearchString?.(text);
+}
+
 function applySettings(payload: SettingsApplyPayload) {
   const prevCompressBlankKeepOneBlank = compressBlankKeepOneBlank.value;
   compressBlankKeepOneBlank.value = payload.compressBlankKeepOneBlank;
@@ -1007,6 +1012,7 @@ useAppShellThemeWatch({
         @pin-click="onPinClick"
         @bookmark-click="onBookmarkClick"
         @remove-highlight-term="onRemoveHighlightTermFromHeader"
+        @find-highlight-term="onFindHighlightTermFromHeader"
         @go-back-from-pin="onGoBackFromPin"
         @change-theme="currentTheme = $event"
         @toggle-sidebar="showSidebar = !showSidebar"
@@ -1139,6 +1145,7 @@ useAppShellThemeWatch({
           :ebook-display-line-to-physical="
             stream.viewportDisplayLineToPhysicalLine
           "
+          :before-reveal-find-widget="ensurePinBeforeRevealFindWidget"
           @probe-line-change="onProbeLineChange"
           @viewport-top-line-change="onViewportTopLineChange"
           @viewport-end-line-change="onViewportEndLineChange"

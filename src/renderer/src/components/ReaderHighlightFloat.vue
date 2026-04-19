@@ -10,9 +10,9 @@ defineProps<{
   pickerLeft: number;
   openDownward: boolean;
   highlightColors: readonly string[];
-  /** 当前选中文案是否已是关键词（显示移除行） */
+  /** 当前选中文案是否已是高亮词（显示移除行） */
   showRemoveRow: boolean;
-  /** 已有关键词时对应色索引；否则 null */
+  /** 已有高亮词时对应色索引；否则 null */
   existingColorIndex: number | null;
 }>();
 

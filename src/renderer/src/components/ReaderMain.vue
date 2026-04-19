@@ -65,13 +65,13 @@ import type { HighlightWordsByIndex } from "../stores/fileMetaStore";
 import { floorReadingPercentFromScrollRatio } from "../utils/format";
 import {
   hasModalOnStack,
-  MODAL_STACK_BASE_Z_INDEX,
+  READER_HL_FLOAT_ROOT_Z_INDEX,
   subscribeModalStackChange,
 } from "../utils/modalStack";
 import { stripEbookIdAndAMarkersFromText } from "../ebook/ebookInternalLinkMarkers";
 
-/** 低于 `AppModal` 蒙层（BASE 6000），避免盖住弹框 */
-const HL_FLOAT_Z_INDEX = MODAL_STACK_BASE_Z_INDEX - 20;
+/** 与 `READER_HL_FLOAT_ROOT_Z_INDEX` 同步；低于 `AppModal` 蒙层（6000） */
+const HL_FLOAT_Z_INDEX = READER_HL_FLOAT_ROOT_Z_INDEX;
 
 const editorEl = ref<HTMLDivElement | null>(null);
 const editorContextMenuOpen = ref(false);
@@ -162,6 +162,8 @@ const props = withDefaults(
      * 压缩空行时：`stripEbook…` 按 Monaco 行序记的「行号」实为显示行，需先映回源物理行再与 `ebookAnchorPhysicalToDisplay` 配对。
      */
     ebookDisplayLineToPhysical?: (displayLine: number) => number;
+    /** 在**打开**查找栏（非关闭）之前调用，例如自动点亮书钉 */
+    beforeRevealFindWidget?: () => void;
   }>(),
   {
     monacoCustomHighlight: defaultMonacoCustomHighlight,
@@ -176,6 +178,7 @@ const props = withDefaults(
     readerFilePath: null,
     ebookAnchorPhysicalToDisplay: undefined,
     ebookDisplayLineToPhysical: undefined,
+    beforeRevealFindWidget: undefined,
   },
 );
 
@@ -274,7 +277,7 @@ function getTxtrMonarchHighlightOptions(): TxtrMonarchHighlightOptions {
   };
 }
 
-/** 关键词或开关变化时更新 Monarch；会触发 TokenizationRegistry 失效并重算 token */
+/** 高亮词或开关变化时更新 Monarch；会触发 TokenizationRegistry 失效并重算 token */
 function applyTxtrMonarchTokenizer() {
   monaco.languages.setMonarchTokensProvider(
     languageId,
@@ -291,7 +294,7 @@ function closeHighlightFloatUi() {
   hlDraftText.value = "";
 }
 
-/** 设为/取消关键词后：取消选区，光标落在原选区几何末端 */
+/** 设为/取消高亮词后：取消选区，光标落在原选区几何末端 */
 function collapseMonacoSelectionToHighlightEnd() {
   const e = editor.value;
   if (!e) return;
@@ -603,7 +606,10 @@ function disposeEbookInternalLinks() {
 }
 
 function getEbookAnchorPhysicalLine(targetId: string): number | undefined {
-  return lookupEbookAnchorPhysicalLine(ebookAnchorIdToPhysicalLine.value, targetId);
+  return lookupEbookAnchorPhysicalLine(
+    ebookAnchorIdToPhysicalLine.value,
+    targetId,
+  );
 }
 
 function getEbookLeadingLinkLabelsByDisplayLine(): ReadonlyMap<
@@ -702,12 +708,7 @@ function applyEbookInternalLinkMarkers() {
   const lineCount = Math.max(1, m.getLineCount());
   for (const occ of linkOccurrences) {
     const dl = Math.min(lineCount, Math.max(1, occ.physicalLine));
-    const r = new monaco.Range(
-      dl,
-      occ.startColumn,
-      dl,
-      occ.endColumnExclusive,
-    );
+    const r = new monaco.Range(dl, occ.startColumn, dl, occ.endColumnExclusive);
     decs.push({
       range: r,
       options: {
@@ -1051,6 +1052,7 @@ function toggleFindWidget() {
     }
     e.getAction("closeFindWidget")?.run();
   } else {
+    props.beforeRevealFindWidget?.();
     e.getAction("actions.find")?.run();
   }
 }
@@ -1062,6 +1064,76 @@ function isFindWidgetRevealed(): boolean {
     getState?: () => { isRevealed: boolean };
   } | null;
   return findCtrl?.getState?.().isRevealed === true;
+}
+
+type FindControllerStartOpts = {
+  forceRevealReplace: boolean;
+  seedSearchStringFromSelection: "none" | "single" | "multiple";
+  seedSearchStringFromNonEmptySelection: boolean;
+  seedSearchStringFromGlobalClipboard: boolean;
+  shouldFocus: number;
+  shouldAnimate: boolean;
+  updateSearchScope: boolean;
+  loop: boolean;
+};
+
+/** 顶栏高亮词：先经书钉回调，再打开查找并填入高亮词（字面量），并跳到下一处匹配 */
+function openFindWithSearchString(raw: string) {
+  void openFindWithSearchStringAsync(raw);
+}
+
+async function openFindWithSearchStringAsync(raw: string) {
+  const e = editor.value;
+  const term = raw.trim();
+  if (!e || !term) return;
+
+  props.beforeRevealFindWidget?.();
+
+  const findOpt = e.getOption(monaco.editor.EditorOption.find);
+  const ctrl = e.getContribution(FIND_CONTROLLER_ID) as {
+    start?: (
+      opts: FindControllerStartOpts,
+      newState?: Record<string, unknown>,
+    ) => Promise<void>;
+    moveToNextMatch?: () => boolean;
+  } | null;
+
+  e.focus();
+
+  if (!ctrl?.start) {
+    e.getAction("actions.find")?.run();
+    e.trigger("colortxt", "editor.actions.findWithArgs", {
+      searchString: term,
+      isRegex: false,
+      matchWholeWord: false,
+      isCaseSensitive: false,
+      preserveCase: false,
+      findInSelection: false,
+    });
+    return;
+  }
+
+  await ctrl.start(
+    {
+      forceRevealReplace: false,
+      seedSearchStringFromSelection: "none",
+      seedSearchStringFromNonEmptySelection: false,
+      seedSearchStringFromGlobalClipboard: false,
+      shouldFocus: 1,
+      shouldAnimate: false,
+      updateSearchScope: false,
+      loop: findOpt.loop,
+    },
+    {
+      searchString: term,
+      isReplaceRevealed: false,
+      isRegex: false,
+      wholeWord: false,
+      matchCase: false,
+      preserveCase: false,
+    },
+  );
+  ctrl.moveToNextMatch?.();
 }
 
 function focusEditor() {
@@ -1148,11 +1220,7 @@ function normalizeScrollAfterEmbeddedViewZones() {
 
     if (st0 <= edgePx) {
       e.setScrollTop(0, monaco.editor.ScrollType.Immediate);
-    } else if (
-      top1 > 0 &&
-      st0 >= top1 - alignTol &&
-      st0 <= top1 + alignTol
-    ) {
+    } else if (top1 > 0 && st0 >= top1 - alignTol && st0 <= top1 + alignTol) {
       // 与 jumpToLine(1) 顶对齐同一语义：正文第 1 行顶在视口顶；篇首若有 Zone 在上方，物理「篇首」应为 scrollTop=0。
       e.setScrollTop(0, monaco.editor.ScrollType.Immediate);
     } else if (maxTop > 0 && st0 >= maxTop - edgePx) {
@@ -1302,6 +1370,7 @@ defineExpose({
   getAllText,
   getSelectedText,
   toggleFindWidget,
+  openFindWithSearchString,
   isFindWidgetRevealed,
   focusEditor,
   scrollByDeltaY,
@@ -1332,7 +1401,8 @@ function applyReaderSyntaxFromProps() {
 }
 
 watch(
-  () => [props.monacoCustomHighlight, props.txtrDelimitedMatchCrossLine] as const,
+  () =>
+    [props.monacoCustomHighlight, props.txtrDelimitedMatchCrossLine] as const,
   () => {
     applyReaderSyntaxFromProps();
     applyTxtrMonarchTokenizer();
@@ -1475,7 +1545,11 @@ onMounted(() => {
       ev.stopImmediatePropagation();
       imageLightboxSrc.value = url;
     };
-    editorHost?.addEventListener("pointerdown", onReaderPointerDownCapture, true);
+    editorHost?.addEventListener(
+      "pointerdown",
+      onReaderPointerDownCapture,
+      true,
+    );
     onBeforeUnmount(() => {
       d1.dispose();
       d2.dispose();

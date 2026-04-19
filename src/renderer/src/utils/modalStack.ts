@@ -4,6 +4,18 @@ const Z_INDEX_STEP = 10
 /** 与 `registerModal` 首层蒙层一致，供阅读器浮层等压在蒙层之下 */
 export const MODAL_STACK_BASE_Z_INDEX = BASE_Z_INDEX
 
+/**
+ * ReaderMain `.hlFloatRoot`（高亮笔尖/色盘，fixed 全视口）；
+ * 须低于 `MODAL_STACK_BASE_Z_INDEX`。
+ */
+export const READER_HL_FLOAT_ROOT_Z_INDEX = MODAL_STACK_BASE_Z_INDEX - 20
+
+/**
+ * 顶栏等与阅读区 fixed 高亮浮层重叠的弹出层（如高亮词菜单）；
+ * 须高于 `READER_HL_FLOAT_ROOT_Z_INDEX`，且低于 `registerModal` 首层（6000）。
+ */
+export const APP_CHROME_POPOVER_Z_INDEX = MODAL_STACK_BASE_Z_INDEX - 5
+
 type StackEntry = {
   instanceId: number
   close: () => void
