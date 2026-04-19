@@ -1,12 +1,25 @@
-# <img src="./resources/icon.png" width="32"> 彩读｜ColorTxt
+<h1>
+  <p align="center">
+    <img src="./resources/icon.png" width="32"> 彩读｜ColorTxt
+  </p>
+  <p align="center">
+    <img alt="PC" src="https://img.shields.io/badge/PC-Windows%EF%BD%9CmacOS%EF%BD%9CLinux-orange">
+    <img alt="电子书" src="https://img.shields.io/badge/%E7%94%B5%E5%AD%90%E4%B9%A6-txt%EF%BD%9Cepub%EF%BD%9Cmobi%EF%BD%9Cazw3%EF%BD%9Cfb2%EF%BD%9Cfbz%EF%BD%9Cpdf%EF%BD%9Cchm-blue">
+    <img alt="框架" src="https://img.shields.io/badge/%E6%A1%86%E6%9E%B6-Electron_%2B_Vue_%2B_Monaco-purple">
+  </p>
+</h1>
 
-一款会给内容上色的 **本地 TXT 小说阅读器**，带给你不一样的阅读体验！还有章节识别、空行压缩、行首缩进、摸鱼快捷键等功能。支持 **macOS**、**Windows** 和 **Linux**。
+<p align="center">
+  <strong>一款会给内容上色的本地 TXT 小说阅读器，带给你不一样的阅读体验！</strong>
+</p>
 
-> 也支持打开常见的电子书格式（`.epub`/`.mobi`/`.azw3`/`.fb2`/`.fbz`/`.pdf`/`.chm`），打开时会转换为 `.txt` 进行加载。
+<p align="center">
+还有章节识别、空行压缩、行首缩进、摸鱼快捷键等功能。
+</p>
 
-<img src="./images/screenshot.jpg" width="600">
-
-> 基于 Electron + Vue 3 + TypeScript + Monaco Editor 实现。
+<p align="center">
+  <img src="./images/screenshot.jpg" width="600">
+</p>
 
 ## 功能特性
 
@@ -23,7 +36,7 @@
 - 支持**空行压缩**、**行首缩进**。
 - **阅读进度恢复**：自动记录阅读进度，下次打开可以继续阅读。
 - 最近打开记录：默认记录最近打开的20个文件。
-- 文件列表过滤：快速索引文件名。
+- 文件列表功能：支持**分类**、**排序**、文件名**过滤**。
 - 支持**书签功能**：书签可以添加备注。
 - 支持全屏阅读：阅读区域宽度可自由调整。
 - 支持内容查找，快速定位关键词。
