@@ -36,7 +36,11 @@ const emit = defineEmits<{
       title="设置高亮词"
       @pointerdown="emit('pickOpen', $event)"
     >
-      <span class="hlTipIcon" aria-hidden="true" v-html="icons.highlightMark"></span>
+      <span
+        class="hlTipIcon"
+        aria-hidden="true"
+        v-html="icons.highlightMark"
+      ></span>
     </button>
   </div>
   <div
@@ -53,7 +57,11 @@ const emit = defineEmits<{
         title="移除该高亮词"
         @click="emit('pickRemove')"
       >
-        <span class="hlRemoveKeywordInner" aria-hidden="true" v-html="icons.clear"></span>
+        <span
+          class="hlRemoveKeywordInner"
+          aria-hidden="true"
+          v-html="icons.clear"
+        ></span>
       </button>
     </div>
     <div class="hlSwatchRow">
@@ -64,13 +72,15 @@ const emit = defineEmits<{
         class="hlSwatch"
         :class="{
           hlSwatchSelected:
-            existingColorIndex === i && existingColorIndex < highlightColors.length,
+            existingColorIndex === i &&
+            existingColorIndex < highlightColors.length,
         }"
         :style="{ backgroundColor: c }"
         :aria-label="`使用高亮色 ${i + 1}`"
         :title="`高亮色 ${i + 1}`"
         :aria-pressed="
-          existingColorIndex === i && existingColorIndex < highlightColors.length
+          existingColorIndex === i &&
+          existingColorIndex < highlightColors.length
             ? 'true'
             : 'false'
         "

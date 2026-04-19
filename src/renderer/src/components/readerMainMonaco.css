@@ -42,3 +42,26 @@
     var(--vscode-editor-foreground, #ccc)
   );
 }
+
+/*
+ * 装饰器 / 内容 hover 外层为 `.monaco-resizable-hover`，高度常略大于内层 `.monaco-hover`；
+ * Monaco 默认只给内层铺 `editorHoverWidget-background`，多出的纵向区域会透出阅读器背景；
+ * 小字号时一行文案更矮，空白更明显；
+ * 给 .monaco-editor .monaco-resizable-hover 补上与悬停面板一致的背景
+ */
+.monaco-editor .monaco-resizable-hover {
+  background-color: var(--vscode-editorHoverWidget-background);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  pointer-events: none !important;
+}
+
+/* .monaco-editor .monaco-resizable-hover {
+  border: none !important;
+}
+
+.monaco-editor .monaco-resizable-hover > .monaco-hover {
+  border: 1px solid var(--vscode-editorHoverWidget-border) !important;
+  border-radius: 3px !important;
+} */
