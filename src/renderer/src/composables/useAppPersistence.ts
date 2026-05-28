@@ -160,6 +160,8 @@ export function useAppPersistence(deps: {
   readerPaletteOverridesDark: Ref<Partial<ReaderSurfacePalette>>;
   highlightColorsLight: Ref<string[]>;
   highlightColorsDark: Ref<string[]>;
+  /** 全局高亮词：跨文件匹配，Record<string, string[]> 按色值索引组织 */
+  globalHighlightWords: Ref<Record<string, string[]>>;
   /** 电子书转换输出目录；空字符串表示与源文件同目录；无持久化键时默认 userData/ConvertedTxt */
   ebookConvertOutputDir: Ref<string>;
   /** 角色立绘缓存根目录（绝对路径）；无键时默认 userData/CharacterPortrait */
@@ -765,6 +767,17 @@ export function useAppPersistence(deps: {
       parsedHD,
     );
 
+    /** 全局高亮词 */
+    if (data.globalHighlightWords && typeof data.globalHighlightWords === "object") {
+      const cleaned: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(data.globalHighlightWords)) {
+        if (Array.isArray(v) && v.length > 0) {
+          cleaned[k] = v;
+        }
+      }
+      deps.globalHighlightWords.value = cleaned;
+    }
+
     const normalizedRules = normalizeLoadedChapterRules(data.chapterRules);
     if (normalizedRules) {
       try {
@@ -879,6 +892,9 @@ export function useAppPersistence(deps: {
         deps.highlightColorsDark.value,
         DEFAULT_HIGHLIGHT_COLORS_DARK,
       ),
+      globalHighlightWords: Object.keys(deps.globalHighlightWords.value).length > 0
+        ? deps.globalHighlightWords.value
+        : undefined,
       ebookConvertOutputDir: deps.ebookConvertOutputDir.value,
       characterPortraitCacheDir: deps.characterPortraitCacheDir.value.trim(),
       fileCategory: deps.fileCategory.value,

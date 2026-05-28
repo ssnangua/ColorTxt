@@ -453,6 +453,7 @@ const readerPaletteOverridesDark = ref<Partial<ReaderSurfacePalette>>({});
 
 const highlightColorsLight = ref<string[]>([...DEFAULT_HIGHLIGHT_COLORS_LIGHT]);
 const highlightColorsDark = ref<string[]>([...DEFAULT_HIGHLIGHT_COLORS_DARK]);
+const globalHighlightWords = ref<Record<string, string[]>>({});
 
 const readerSurfaceLight = computed(() =>
   mergeReaderSurfacePalette(
@@ -513,25 +514,45 @@ function onCharacterFileMetaPatch(payload: {
 }
 
 const currentFileHighlightTerms = computed<
-  Array<{ text: string; color: string; colorIndex: number }>
+  Array<{ text: string; color: string; colorIndex: number; isGlobal: boolean }>
 >(() => {
-  const groups = currentFileHighlightWords.value;
-  if (!groups) return [];
+  const fileGroups = currentFileHighlightWords.value;
   const colors = highlightColorsForReader.value;
   const bodyText =
     currentTheme.value === "vs"
       ? readerSurfaceLight.value.bodyText
       : readerSurfaceDark.value.bodyText;
-  const out: Array<{ text: string; color: string; colorIndex: number }> = [];
-  for (const [idxKey, terms] of Object.entries(groups)) {
+
+  // 合并：全局高亮词优先，文件级高亮词作为补充（去重）
+  const seen = new Set<string>();
+  const out: Array<{ text: string; color: string; colorIndex: number; isGlobal: boolean }> = [];
+
+  // 1. 全局高亮词优先（始终显示）
+  for (const [idxKey, terms] of Object.entries(globalHighlightWords.value)) {
     const idx = Number.parseInt(idxKey, 10);
     if (!Number.isFinite(idx) || idx < 0) continue;
     const color = idx < colors.length ? colors[idx] : bodyText;
     for (const text of terms) {
-      if (!text) continue;
-      out.push({ text, color, colorIndex: idx });
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      out.push({ text, color, colorIndex: idx, isGlobal: true });
     }
   }
+
+  // 2. 文件级高亮词（补充未在全局词中出现的）
+  if (fileGroups) {
+    for (const [idxKey, terms] of Object.entries(fileGroups)) {
+      const idx = Number.parseInt(idxKey, 10);
+      if (!Number.isFinite(idx) || idx < 0) continue;
+      const color = idx < colors.length ? colors[idx] : bodyText;
+      for (const text of terms) {
+        if (!text || seen.has(text)) continue;
+        seen.add(text);
+        out.push({ text, color, colorIndex: idx, isGlobal: false });
+      }
+    }
+  }
+
   return out;
 });
 
@@ -775,6 +796,7 @@ const persistence = useAppPersistence({
   readerPaletteOverridesDark,
   highlightColorsLight,
   highlightColorsDark,
+  globalHighlightWords,
   ebookConvertOutputDir,
   characterPortraitCacheDir,
   fileCategory,
@@ -814,6 +836,7 @@ watch(fileListEditing, (editing, wasEditing) => {
 
 watch(aiAssistantDeepThinking, () => persistSettings());
 watch(aiAssistantSpoilerSafe, () => persistSettings());
+watch(globalHighlightWords, () => persistSettings(), { deep: true });
 watch(
   voiceReadSettings,
   () => persistSettings(),
@@ -1611,12 +1634,146 @@ function onAddHighlightTerm(payload: { text: string; colorIndex: number }) {
 function onRemoveHighlightTerm(payload: { text: string }) {
   const path = currentFile.value;
   if (!path) return;
-  fileMetaRecords.value = removeHighlightTermFromFile(
+
+  const term = payload.text;
+
+  // 先检查是否是全局词，如果是则从全局删除
+  let foundInGlobal = false;
+  for (const [idxKey, terms] of Object.entries(globalHighlightWords.value)) {
+    if (terms.includes(term)) {
+      foundInGlobal = true;
+      const idx = Number.parseInt(idxKey, 10);
+      if (Number.isFinite(idx) && idx >= 0) {
+        const nextWords = terms.filter((w) => w !== term);
+        const newGlobal = { ...globalHighlightWords.value };
+        if (nextWords.length > 0) {
+          newGlobal[idxKey] = nextWords;
+        } else {
+          // 数组为空则删除该键，避免留下空数组
+          delete newGlobal[idxKey];
+        }
+        globalHighlightWords.value = newGlobal;
+      }
+    }
+  }
+
+  // 额外清理：移除所有空数组（可能是之前操作遗留的）
+  if (foundInGlobal) {
+    const newGlobal = { ...globalHighlightWords.value };
+    for (const [idxKey, terms] of Object.entries(newGlobal)) {
+      if (terms.length === 0) {
+        delete newGlobal[idxKey];
+      }
+    }
+    globalHighlightWords.value = newGlobal;
+  }
+
+  // 如果不在全局列表，则从文件级高亮词中删除
+  if (!foundInGlobal) {
+    fileMetaRecords.value = removeHighlightTermFromFile(
+      fileMetaRecords.value,
+      path,
+      term,
+    );
+    persistFileMeta();
+  } else {
+    // 全局词已从 globalHighlightWords 删除，触发持久化
+    persistSettings();
+  }
+}
+
+/** 切换单个高亮词的全局状态（开关） */
+function onToggleGlobalHighlightTerm([text, enabled]: [string, boolean]) {
+  const term = text.trim();
+  if (!term) return;
+  const path = currentFile.value;
+  if (!path) return;
+
+  if (!enabled) {
+    // 关闭：从全局词列表移除该词，添加回文件级高亮词
+    // 1. 从全局删除
+    const newGlobal = { ...globalHighlightWords.value };
+    let foundIdx: number | null = null;
+    for (const [idxKey, terms] of Object.entries(newGlobal)) {
+      if (terms.includes(term)) {
+        foundIdx = Number.parseInt(idxKey, 10);
+        const nextWords = terms.filter((w) => w !== term);
+        if (nextWords.length > 0) {
+          newGlobal[idxKey] = nextWords;
+        } else {
+          delete newGlobal[idxKey];
+        }
+      }
+    }
+    globalHighlightWords.value = newGlobal;
+
+    // 2. 添加回文件级
+    if (foundIdx !== null && Number.isFinite(foundIdx) && foundIdx >= 0) {
+      fileMetaRecords.value = upsertFileMetaRecord(
+        fileMetaRecords.value,
+        path,
+        (record) => {
+          let words = { ...(record?.highlightWordsByIndex ?? {}) };
+          const idxKey = String(foundIdx);
+          const existing = words[idxKey] ?? [];
+          if (!existing.includes(term)) {
+            words = { ...words, [idxKey]: [...existing, term] };
+          }
+          return { highlightWordsByIndex: words };
+        },
+      );
+    }
+    persistFileMeta();
+    persistSettings();
+    return;
+  }
+
+  // 开启：从文件级高亮词移除该词，添加到全局高亮词
+  const groups = currentFileHighlightWords.value;
+  let foundColorIndex: number | null = null;
+
+  // 1. 从文件级找到色值索引
+  if (groups) {
+    for (const [idxKey, terms] of Object.entries(groups)) {
+      const idx = Number.parseInt(idxKey, 10);
+      if (!Number.isFinite(idx) || idx < 0) continue;
+      if (terms.includes(term)) {
+        foundColorIndex = idx;
+        break;
+      }
+    }
+  }
+
+  if (foundColorIndex === null) return; // 文件级没有这个词，无法移动
+  const idxKey = String(foundColorIndex);
+
+  // 2. 从文件级删除该词
+  fileMetaRecords.value = upsertFileMetaRecord(
     fileMetaRecords.value,
     path,
-    payload.text,
+    (record) => {
+      let words = { ...(record?.highlightWordsByIndex ?? {}) };
+      const existing = words[idxKey] ?? [];
+      const nextWords = existing.filter((w) => w !== term);
+      if (nextWords.length > 0) {
+        words = { ...words, [idxKey]: nextWords };
+      } else {
+        delete words[idxKey];
+      }
+      return { highlightWordsByIndex: words };
+    },
   );
   persistFileMeta();
+
+  // 3. 添加到全局词
+  const existingWords = globalHighlightWords.value[idxKey] ?? [];
+  if (existingWords.includes(term)) return; // 已经是全局词
+  const nextWords = [...existingWords, term];
+  globalHighlightWords.value = {
+    ...globalHighlightWords.value,
+    [idxKey]: nextWords,
+  };
+  persistSettings();
 }
 
 async function clearCurrentFileHighlightTerms() {
@@ -2294,6 +2451,7 @@ useAppShellThemeWatch({
           @remove-bookmark="onRemoveBookmark"
           @find-highlight-term="onFindHighlightTermFromSidebar"
           @clear-inline-search-highlight="clearReaderInlineSearchHighlight"
+          @toggle-global-highlight-term="(text, enabled) => onToggleGlobalHighlightTerm([text, enabled])"
           @update:search-query="searchQuery = $event"
           @update:search-match-case="searchMatchCase = $event"
           @update:search-whole-word="searchWholeWord = $event"
@@ -2370,6 +2528,7 @@ useAppShellThemeWatch({
           :reader-surface-dark="readerSurfaceDark"
           :highlight-colors="highlightColorsForReader"
           :highlight-words-by-index="currentFileHighlightWords"
+          :global-highlight-words="globalHighlightWords"
           :reader-file-path="currentFile"
           :ebook-anchor-physical-to-display="
             stream.physicalLineToDisplayForReader

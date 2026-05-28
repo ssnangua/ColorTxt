@@ -57,7 +57,7 @@ const props = withDefaults(
     fileMetaRecords?: readonly FileMetaRecord[];
     /** 当前打开文件的实时进度（%），滚动时更新 */
     liveReadingProgressPercent?: number;
-    highlightTerms?: Array<{ text: string; color: string; colorIndex: number }>;
+    highlightTerms?: Array<{ text: string; color: string; colorIndex: number; isGlobal: boolean }>;
     searchQuery?: string;
     searchResults?: Array<{
       physicalLine: number;
@@ -208,6 +208,7 @@ const emit = defineEmits<{
   refreshChaptersFromReader: [];
   findHighlightTerm: [text: string];
   removeHighlightTerm: [text: string];
+  toggleGlobalHighlightTerm: [text: string, enabled: boolean];
   clearInlineSearchHighlight: [];
   clearHighlights: [];
   "update:searchQuery": [value: string];
@@ -708,6 +709,7 @@ defineExpose({
         :monaco-font-family="monacoFontFamily"
         @find-highlight-term="emit('findHighlightTerm', $event)"
         @remove-highlight-term="emit('removeHighlightTerm', $event)"
+        @toggle-global-highlight-term="(text, enabled) => emit('toggleGlobalHighlightTerm', text, enabled)"
         @clear-inline-search-highlight="emit('clearInlineSearchHighlight')"
         @clear-highlights="emit('clearHighlights')"
       />

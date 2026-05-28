@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import SwitchToggle from "./SwitchToggle.vue";
 import { icons } from "../icons";
 
 withDefaults(
   defineProps<{
     currentFilePath: string | null;
-    highlightTerms: Array<{ text: string; color: string; colorIndex: number }>;
+    highlightTerms: Array<{ text: string; color: string; colorIndex: number; isGlobal: boolean }>;
     hasInlineSearchHighlight?: boolean;
     highlightPreviewBg?: string;
     monacoFontFamily: string;
@@ -20,6 +21,7 @@ withDefaults(
 const emit = defineEmits<{
   findHighlightTerm: [text: string];
   removeHighlightTerm: [text: string];
+  toggleGlobalHighlightTerm: [text: string, enabled: boolean];
   clearInlineSearchHighlight: [];
   clearHighlights: [];
 }>();
@@ -52,15 +54,24 @@ function onRemoveHighlightTermClick(ev: MouseEvent, text: string) {
           <span class="highlightText" :style="{ color: item.color }">
             {{ item.text }}
           </span>
-          <button
-            type="button"
-            class="highlightRemoveBtn"
-            title="移除高亮词"
-            aria-label="移除高亮词"
-            @click="onRemoveHighlightTermClick($event, item.text)"
-          >
-            <span class="highlightRemoveIcon" v-html="icons.close"></span>
-          </button>
+          <div class="highlightItemActions" @click.stop>
+            <button
+              type="button"
+              class="highlightRemoveBtn"
+              title="移除高亮词"
+              aria-label="移除高亮词"
+              @click="onRemoveHighlightTermClick($event, item.text)"
+            >
+              <span class="highlightRemoveIcon" v-html="icons.close"></span>
+            </button>
+            <SwitchToggle
+              size="sm"
+              :model-value="item.isGlobal"
+              :disabled="false"
+              aria-label="设为全局高亮词"
+              @update:model-value="emit('toggleGlobalHighlightTerm', item.text, $event)"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -170,6 +181,13 @@ function onRemoveHighlightTermClick(ev: MouseEvent, text: string) {
   width: 9px;
   height: 9px;
   display: block;
+}
+
+.highlightItemActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .highlightRemoveIcon :deep(path) {

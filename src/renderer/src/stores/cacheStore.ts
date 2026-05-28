@@ -107,6 +107,8 @@ export type PersistedSettingsData = {
   characterPortraitCacheDir?: string;
   /** 语音朗读（引擎、音色、语速音调、DashScope Key） */
   voiceRead?: Partial<VoiceReadSettings>;
+  /** 全局高亮词：跨文件匹配，键为色值索引字符串，值为该索引下的高亮词 */
+  globalHighlightWords?: Record<string, string[]>;
 };
 
 export type PersistedSettingsLoadResult = {
@@ -343,6 +345,29 @@ export function loadPersistedSettingsData(
       dashscopeApiKey:
         typeof vr.dashscopeApiKey === "string" ? vr.dashscopeApiKey : undefined,
     };
+  }
+
+  /** 全局高亮词：Record<string, string[]>，按色值索引组织 */
+  if (obj.globalHighlightWords && typeof obj.globalHighlightWords === "object") {
+    const raw = obj.globalHighlightWords as Record<string, unknown>;
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      const idx = Number.parseInt(k, 10);
+      if (!Number.isFinite(idx) || idx < 0 || String(idx) !== k) continue;
+      if (!Array.isArray(v)) continue;
+      const words: string[] = [];
+      const seen = new Set<string>();
+      for (const w of v) {
+        if (typeof w !== "string") continue;
+        const t = w.trim();
+        if (!t || t.length > 100) continue;
+        if (seen.has(t)) continue;
+        seen.add(t);
+        words.push(t);
+      }
+      if (words.length) out[k] = words;
+    }
+    if (Object.keys(out).length) data.globalHighlightWords = out;
   }
 
   return {
