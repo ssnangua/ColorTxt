@@ -424,7 +424,7 @@ async function onConfirm() {
   }
 
   if (voiceReadDashScopeRequiresApiKey(draftVoiceRead.value)) {
-    await appAlert("「语音朗读」DashScope 需要 API 密钥");
+    await appAlert("「语音朗读」阿里云通义（DashScope）需要 API 密钥");
     return;
   }
 

@@ -196,7 +196,10 @@ src/
 │   ├── aiRagChapterDigest.ts # 超长章分段压缩为全章提要
 │   ├── aiAgentTools.ts       # Agent 工具实现
 │   ├── aiCharacterPortrait.ts # 角色抽取、画风与文生图编排
-│   ├── aiTxt2Img.ts          # A1111 / Comfy 等文生图 API
+│   ├── aiTxt2Img.ts          # 文生图路由（A1111 / Comfy / 云端）
+│   ├── aiTxt2ImgPromptAdapt.ts # 画风+形象 → SD tag 或自然语言 prompt
+│   ├── aiTxt2ImgTestConnection.ts # 文生图轻量连通性探测（不出图）
+│   ├── aiTxt2ImgDashScope.ts / aiTxt2ImgOpenAI.ts / aiTxt2ImgStability.ts …
 │   ├── aiBookHash.ts         # 书籍内容哈希（与渲染侧一致）
 │   ├── characterPortraitFs.ts # 立绘缓存目录与文件迁移
 │   └── resolveSqliteVecPath.ts # sqlite-vec 原生扩展路径解析
@@ -214,8 +217,14 @@ src/
 │       ├── chapter.ts        # 章节检测、行首缩进与物理/展示列映射
 │       ├── icons.ts          # 内联 SVG 图标汇总
 │       ├── assets/           # 字体与静态图标
+│       ├── public/
+│       │   └── card-textures/    # 角色卡全息贴图（grain、glitter、cosmos 分层、foil 等）
+│       ├── styles/
+│       │   ├── characterCardHolo.css         # 全息基础层、off/soft、透视与 popover 旋转
+│       │   └── characterCardHoloEffects.css  # 各 `data-char-texture` 效果样式
 │       ├── components/       # Vue 组件（见下文组件表）
 │       ├── composables/      # 根级组合式职责拆分（见补充说明）
+│       │   ├── useConnectionTest.ts       # 设置页「测试连接」按钮状态（pending/ok/fail）
 │       │   ├── useAppBookmarkPins.ts      # 书钉与书签（行号锚点、章节名、弹窗预览、Teleport 菜单等，见 DOCS「书签」）
 │       │   ├── useAppChapterListSync.ts   # 列表「滚到当前」同步一拍
 │       │   ├── useAppChapterNavigation.ts # 章节跳转与规则联动
@@ -236,7 +245,9 @@ src/
 │       │   ├── useTxtStreamPipeline.ts    # 大文件流式解析与映射
 │       │   ├── useAiChapterPlainTextBridge.ts # 响应 `ai:chapter-plain-request` 回传章文
 │       │   ├── useAiFoldContentSelectAll.ts # 助手折叠区全选
-│       │   └── useSecretStorageHint.ts      # 设置页 API 密钥落盘说明文案
+│       │   ├── useSecretStorageHint.ts      # 设置页 API 密钥落盘说明文案
+│       │   ├── useCharacterCardTilt.ts      # 角色卡指针倾斜 + 光泽 CSS 变量（弹簧跟手/回正）
+│       │   └── useCharacterCardPopoverZoom.ts # 角色卡原位放大（Teleport、平移/缩放/Y 旋转）
 │       ├── constants/
 │       │   ├── appUi.ts          # UI 常量、存储 key、侧栏与字号边界
 │       │   ├── readerPalette.ts  # 阅读器表面色默认值与合并
@@ -327,6 +338,8 @@ src/
 │       │   ├── aiMarkdownMarkedPrep.ts   # Markdown 预处理
 │       │   ├── aiMarkdownChapterRef.ts    # 章节引用 token 链接化
 │       │   ├── aiToolFoldBody.ts         # 工具折叠区 DOM 辅助
+│       │   ├── characterCardSpring.ts    # 角色卡倾斜弹簧参数（跟手 / 回正）
+│       │   ├── appShellMenuPosition.ts   # 侧栏浮动子菜单定位（含卡片效果 flyout）
 │       │   └── defaultCacheDirs.ts       # 默认 AI 数据/模型/立绘缓存目录（与 preload 对齐）
 └── shared/
     ├── packageDerived.ts           # 从 package 派生的共享元数据
@@ -339,6 +352,10 @@ src/
     ├── apiEndpointPresets.ts       # 对话服务商预设与官方 OpenAI 兼容 Base URL
     ├── aiTokenUsage.ts             # usage 解析、缓存命中、花费估算与展示文案
     ├── aiTxt2ImgIpc.ts             # 文生图 IPC 载荷类型
+    ├── txt2ImgBackend.ts           # 文生图 backend、prompt 族、尺寸解析
+    ├── txt2ImgCloudSizePresets.ts  # 云端固定尺寸档与默认对齐（512×768 参考）
+    ├── txt2ImgCloudModelPresets.ts # 各云端模型建议列表与万相 API 版本判定
+    ├── txt2ImgOpenAiQuality.ts     # OpenAI 图像画质选项
     ├── aiSkills.ts                 # 技能元数据与合并工具
     ├── aiAgentSkillToolNames.ts    # Agent 技能名常量
     ├── aiChapterRefPrompt.ts       # 章节引用提示词约定
@@ -377,7 +394,8 @@ src/
 - **`aiRagChapterDigest.ts`**：`RAG_CHAPTER_NO_COMPRESS_CHARS`（1 万）内不压缩；超长章按每 1 万字段压缩，合并后 `mergedMarkdown` 上限约 1 万；`chapterDigestProgressUi` 供工具折叠区展示「读取章节原文（M/N）」进度。
 - **`aiAgentTools.ts`**：Agent 可调工具实现（检索章节、向量检索等，与 `@shared/aiAgentSkillToolNames` 等配合）。
 - **`aiCharacterPortrait.ts`**：角色检索抽取、全书风格推断、中英 SD 提示词、文生图落盘编排；检索与画风推断等 LLM 调用的 usage 汇总为 **`tokenUsage`** / **`tokenUsageAvailable`** 供侧栏展示。
-- **`aiTxt2Img.ts`**：与 A1111 / Comfy 等兼容 API 交互（采样器列表、实际出图等）。
+- **`aiTxt2Img.ts`**：与 A1111 / Comfy / 云端图像 API 交互（采样器列表、实际出图等）。
+- **`aiTxt2ImgTestConnection.ts`**：按 **`backend`** 轻量探测连通性（如 OpenAI `/models`、万相 models、Stability 账户等），**不**调用出图接口。
 - **`aiBookHash.ts`**：主进程侧书籍内容哈希（与渲染进程 `utils/aiBookHash.ts` 算法一致）。
 - **`characterPortraitFs.ts`**：立绘缓存根目录迁移、图片复制到目标绝对路径。
 - **`resolveSqliteVecPath.ts`**：按平台解析 `sqlite-vec` 原生扩展路径供 `better-sqlite3` 加载。
@@ -431,6 +449,7 @@ src/
     - **卸载落盘**：`pagehide` / `beforeunload` 时落盘会话与设置（与「清除缓存」防回写配合）。
 - **`useReaderSidebarLists.ts`**：侧栏文件/章节/书签虚拟列表、过滤与滚动同步；文件列表按 **`fileCategory`** 筛选、按 **`fileSort`** 排序，与项上 `category` / `addedAt` 等字段合并展示。章节列表视口联动滚动受 **`suppressChapterListAutoScroll`** 抑制（进/出编辑、切换压缩空行等）；须在 **`syncChaptersAfterViewportSettled`** 的 `finally` 或流错误路径中恢复，否则换章不再居中当前章。
 - **`useReaderInlineSearch.ts`**：阅读区内联搜索：关键词匹配、结果列表、当前命中定位与导航。
+- **`useConnectionTest.ts`**：设置页 **测试连接** 按钮状态（`idle` / `pending` / `ok` / `fail`）；配置指纹变更后重置；供 **`AppConnectionTestButton.vue`** 使用。
 - **`useFileListCategorySort.ts`**：文件列表：分类下拉（`AppCustomSelect`）的固定项/滚动项/计数与触发器文案；`FileSortMode` 与 `constants/fileCategories` 对齐。
 - **`useFileListSelection.ts`**：文件列表「编辑模式」：多选路径、`Ctrl+A` / 反选、与列表焦点区配合；选中集随列表变化裁剪。
 - **`useFileListMenus.ts`**：文件列表右键菜单、编辑模式菜单、**分类浮层**（`CategoryPickerMenu`）坐标与 `setFilesCategory` 派发。
@@ -441,6 +460,8 @@ src/
     - 编辑态 **`resyncMirrorFromReader`** 将 Monaco 全文同步为 `physicalLineContents`（供搜索与底栏统计）。
 - **`useAiChapterPlainTextBridge.ts`**：订阅 `window.colorTxt.onChapterPlainRequest`，调用 **`getChapterPlainTextByIndex`**（`currentChapterPlainText.ts`）后 `replyChapterPlainText`。
 - **`useAiFoldContentSelectAll.ts`**：AI 阅读助手：工具调用 / 思考等折叠区正文的「全选」与键盘选择（与 `AiAssistantDetailsFold` 等配合）。
+- **`useCharacterCardTilt.ts`**：角色卡 **3D 倾斜** 与光泽联动（思路参考 [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css)）。**`rotateX` / `rotateY`** 为唯一驱动；每帧由旋转反推 **`--char-pointer-*`**、**`--char-background-*`**、**`--char-card-opacity`** 等 CSS 变量。指针跟手用 **`CARD_SPRING_FOLLOW_ROTATE`**，移出卡片用 **`CARD_SPRING_SNAP_ROTATE`** 回正（带轻微过冲）。**`textureEffect === 'off'`** 或放大过渡未完成时禁用倾斜。
+- **`useCharacterCardPopoverZoom.ts`**：角标「查看大图」：**原位**将同一张卡 **`Teleport` 到 `body`**，**`cardShell`（translater）** 负责 `translate3d` + `scale`，**`card__tilt`（rotator）** 负责 **`--char-popover-rotate-y`**（打开 360°→0°，关闭 0°→360° 后 instant 归 0°）。列表格内留 **`cardShellPlaceholder`** 占位；其它卡半透明且 **`pointer-events: none`**。放大激活约 100ms 后 **`tilt.resetIdle()`** 收掉悬停倾斜（对齐参考实现的 `interactEnd`）。
 
 ###### `constants/`
 
@@ -552,17 +573,22 @@ src/
 - **`aiTypes.ts`**：AI 共享类型与 **`defaultAIConfig`**（含 **`showTokenUsage`**、**`chat.tokenPricePerMillion`**、默认对话 Base URL 等）。
   - `AIConfig`、对话/嵌入端点；**文生图**（`AITxt2ImgConfig`，A1111 / ComfyUI）；Agent 载荷；角色画风/抽取结果等。
   - `defaultAIConfig` 与配置迁移常量。
-- **`aiTxt2ImgIpc.ts`**：渲染进程调用 `ai:txt2img` 时的请求草稿与返回结果类型。
+- **`aiTxt2ImgIpc.ts`**：渲染进程调用 `ai:txt2img` 时的请求草稿与返回结果类型（含 **`testConnection`**，不出图）。
+- **`txt2ImgBackend.ts`**：**`getTxt2ImgPromptFamily`**（`sd` / `natural`）、**`resolveTxt2ImgSize`**、各后端默认云端模型等。
+- **`txt2ImgCloudSizePresets.ts`**：云端固定尺寸列表；切换服务商时 **`applyTxt2ImgSizeForBackendSwitch`**（参考 **512×768**，在比例足够接近的档位中选像素最少，利于立绘省额度）。
+- **`txt2ImgCloudModelPresets.ts`**：各 **`backend`** 的模型 ID 建议（新→旧）；万相 2.5+ / 2.6+ 高分辨率与协议分支判定。
+- **`txt2ImgOpenAiQuality.ts`**：OpenAI Images 画质枚举与设置页中文标签。
 - **`aiSkills.ts`**：内置技能元数据、用户覆盖结构、自定义技能 `AiCustomSkill` 及合并/规范化工具。
 - **`aiAgentSkillToolNames.ts`**：Agent 可调技能名常量（与主进程 `aiAgentTools` 等对齐）。
 - **`aiChapterRefPrompt.ts`**：助手回复中章节引用类 token 的提示词约定（与 `aiMarkdownChapterRef.ts` 配合）。
-- **`apiEndpointPresets.ts`**：对话 **`CHAT_API_PROVIDER_PRESETS`**（服务商名 + 官方 Base URL 两行下拉；含 OpenRouter、Gemini OpenAI 兼容、**「自定义 OpenAI 兼容服务」** 等）；**`findChatProviderPresetByBaseUrl`** 与接口地址联动（手改地址可反推服务商，清空后保持「自定义」）。文生图 **`TXT2IMG_BACKEND_PRESETS`**（接口类型名 + 默认 Base URL 两行下拉；与 **`AITxt2ImgConfig.backend`** 一致）；选中类型写入默认地址，**不**按地址反推类型。
+- **`apiEndpointPresets.ts`**：对话 **`CHAT_API_PROVIDER_PRESETS`**（服务商名 + 官方 Base URL 两行下拉；含 OpenRouter、Gemini OpenAI 兼容、**「自定义 OpenAI 兼容服务」** 等）；**`findChatProviderPresetByBaseUrl`** 与接口地址联动（手改地址可反推服务商，清空后保持「自定义」）。文生图 **`TXT2IMG_BACKEND_PRESETS`**（服务商名 + 默认 Base URL 两行下拉；与 **`AITxt2ImgConfig.backend`** 一致）；选中服务商写入默认地址与默认云端模型，**不**按地址反推服务商。语音朗读 / 万相文案统一为 **「阿里云通义（DashScope）」**（**`DASHSCOPE_PLATFORM_LABEL`** 等）。
 - **`builtinEmbeddingModels.ts`**：内置模型清单（默认 **`bge-small-zh-v1.5`** 512 维、**`multilingual-e5-small`** 384 维）；**`DEFAULT_HF_REMOTE_HOST`**（默认 **`https://hf-mirror.com`**，可清空改用官方 Hugging Face）。
 - **`builtinEmbeddingIpc.ts`**：向主进程传递当前 **`builtinModel`** 与配置快照（下载/加载/清缓存 IPC）。
 - **`aiDataPaths.ts`**：与主进程 **`aiPaths`** 一致的默认子目录名（`ai/data`、`ai/model-cache`），供渲染层 placeholder。
 - **`aiTokenUsage.ts`**：`extractUsageFromChatJson`、`addTokenUsage`；**`readPromptCacheHitTokens`**（`prompt_cache_hit_tokens`、`prompt_tokens_details.cached_tokens`、`cache_read_input_tokens` 等）；**`computeTokenUsageCost`** / **`formatTokenUsageCost`**（去尾零）；`estimateAgentTurnTokens`；`formatTokenUsageEstimateLine` / **`formatTokenUsageActualLine`**（可追加「总花费约」）。
 - **`characterTypes.ts`**：侧栏「角色」：`CharacterRosterEntry`、`CharacterBookStylePersisted`、`CharacterGender`（按书存 `file.meta`）。
 - **`characterPortraitPaths.ts`**：立绘缓存根默认子目录名 `CharacterPortrait`、按书名净化目录段、立绘/草稿/临时 PNG 文件名与绝对路径拼接。
+- **`characterCardTextureEffects.ts`**：角色卡 **闪卡纹理** 效果 id、菜单文案（`CHARACTER_CARD_TEXTURE_EFFECTS`）、**`DEFAULT_CHARACTER_CARD_TEXTURE_EFFECT`**（默认 **`soft` / 细腻光泽**）、**`normalizeCharacterCardTextureEffect`**（无效或已移除 id 回退默认）。可选 **`dividerBefore`** 控制子菜单项上方分隔线。
 - **`chapterMatchBuiltinPatterns.ts`**：章节匹配三条内置正则（与 `renderer/chapter.ts` 同源）。
 - **`chapterMatchAgentTurn.ts`**：判定 Agent 本轮是否以「生成/调整章节匹配规则」为主（配合 `chapter-match-rules` 技能）。
 - **`colorTxtOpenSaveDialog.ts`**：打开/保存对话框选项类型（主进程 `dialogInvoke` 与 preload 对齐）。
@@ -693,12 +719,13 @@ src/
 | `SettingsGeneralPanel.vue`                           | 「常规」：启动恢复上次文件、同步当前文件、历史条数、电子书转换缓存目录、章节最少字数、**清除缓存**按钮（向父组件 `clearCache`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `SettingsReadingPanel.vue`                           | 「阅读」：字号/行高滑块、压缩空行保留一行、引号/括号跨行匹配、Monaco 平滑滚动、全屏正文区宽度。<br>（`monacoCustomHighlight` 来自 props，用于禁用跨行开关提示）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `SettingsEditPanel.vue`                              | 「编辑」：**显示行号**（`readerEditShowLineNumbers`）、**启用小地图**（`readerEditMinimap`）、**自动刷新章节列表**（`editAutoRefreshChapterList`；少于 `editAutoRefreshChapterListMaxLines` 行时编辑变更防抖刷新章节，否则侧栏显示「刷新章节」）                                                                                                                                                                                                                                                                                                                                                                                      |
-| `SettingsAIPanel.vue`                                | 「AI 阅读助手」：总开关；**服务商** + **接口地址**；API Key；模型 / 温度等；**「显示 Token 消耗信息」** 与 **每百万 Token 价格**；**「数据缓存目录」**（**`aiDataCacheDir`**，`PathPickerInput`，默认 **`userData/ai/data`**，存配置 + 向量库/对话）；**`AppPullFlashButton`** 拉取聊天模型；快捷提问列表等                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `SettingsAIPanel.vue`                                | 「AI 阅读助手」：总开关；**服务商** + **接口地址**；API Key + **`AppConnectionTestButton`**；模型 / 温度等；Token 开关与单价；**`aiDataCacheDir`**；**`AppPullFlashButton`** 拉取聊天模型；快捷提问列表等 |
 | `ApiEndpointInput.vue`                               | 设置页接口地址输入（可选建议列表；对话页建议列表常为空，以服务商下拉为主）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `AiTokenUsageBanner.vue`                             | 阅读助手 / 角色检索共用的 Token 实际消耗条（`formatTokenUsageActualLine`、可选花费）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `AiIndexProgressBanner.vue`                          | 建索引 / 向量化进度文案（阅读助手建索引与角色 **AI 检索** 前补索引共用）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `SettingsVectorModelPanel.vue`                       | 「向量模型」：**模型来源**（内置本地 / 远程 API）。<br>**内置**：缓存目录、HF 镜像、内置模型下拉、下载/清除。<br>**远程**：**服务商** + **接口地址**（与对话模型一致，**`CHAT_API_PROVIDER_PRESETS`**）+ Key + **嵌入模型**（**`ApiEndpointInput`** + 拉取建议，可手输）；切块与 **`ragTopK`** 等                                                                                                                                                                                                                                                                                                                                                                                          |
-| `SettingsTxt2ImgPanel.vue`                           | 「角色卡」：**接口类型**（`AppCustomSelect` 两行：类型名 + 默认 Base URL，预设见 **`TXT2IMG_BACKEND_PRESETS`**）+ **接口地址**（选中类型自动填入默认地址；手改地址**不**改变已选类型）；A1111 采样 / 高清修复、Comfy 工作流 JSON 等；**`AppPullFlashButton`** 拉取采样器 / SD 模型列表。<br>**角色立绘缓存根目录**（`PathPickerInput`，默认 `userData/CharacterPortrait`）                                                                                                                                                                                                                                                                                                                                                                                          |
+| `SettingsVectorModelPanel.vue`                       | 「向量模型」：**模型来源**（内置 / 远程）。<br>**内置**：缓存目录、HF 镜像、模型下拉、下载/清除。<br>**远程**：服务商 + 地址 + Key + **`AppConnectionTestButton`** + **嵌入模型**（**`ApiEndpointInput`** + 拉取）；切块与 **`ragTopK`** |
+| `SettingsTxt2ImgPanel.vue`                           | 「角色卡」：**服务商**（两行下拉 + 默认地址/模型）+ **接口地址**；云端：**API 密钥**（**`AppConnectionTestButton`** 测试连接，不出图）+ **模型**（**`ApiEndpointInput`** 建议，可手输）+ **固定尺寸**下拉（本地仍为宽高）；OpenAI 系 **画质**下拉；A1111 采样 / 高清修复、Comfy 工作流；**`AppPullFlashButton`** 拉取采样器 / SD 模型。<br>**角色立绘缓存根目录** |
+| `AppConnectionTestButton.vue`                        | 设置页共用 **测试连接**（图标 pending/成功/失败；成功不弹框；配置指纹变更后重置）；用于 AI 阅读助手、向量模型、角色卡文生图 |
 | `SettingsSkillsPanel.vue`                            | 「技能」：内置技能开关与覆盖、自定义技能列表；由父级 footer「添加技能」打开 **`SettingsSkillEditModal`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `SettingsSkillEditModal.vue`                         | 自定义技能新建/编辑弹窗                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `AppPullFlashButton.vue`                             | 短时按压态按钮：设置面板内从兼容服务端刷新模型/采样器列表等，完成态闪光反馈                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -722,8 +749,8 @@ src/
 | `AiAssistantDetailsFold.vue`                         | 助手详情区折叠容器（与 `directives/aiStickScroll`、**`useAiFoldContentSelectAll`** 配合）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `AiToolFoldBody.vue`                                 | 工具折叠正文；章文压缩进度 **`当前进度：M/N`** 样式（`utils/aiToolFoldBody.ts`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `AiMarkdown.vue`                                     | 助手回复 Markdown 渲染入口（内部用 `aiMarkdownMarkedSetup` / `aiMarkdownMarkedPrep`、章节引用 `aiMarkdownChapterRef`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `CharacterSidebarPanel.vue`                          | 侧栏「角色」：本书角色卡/立绘列表与 **AI 检索** 抽屉（深度思考 / 防剧透与阅读助手一致）。<br>检索折叠区下展示 **`AiIndexProgressBanner`**（补索引进度）、**`AiTokenUsageBanner`**（检索 LLM 汇总 usage）；与 `@shared/characterTypes`、`characterPortraitPaths`、主进程 `characterPortrait:*` IPC 配合                                                                                                                                                                                                                                                                                                                          |
-| `CharacterRosterCard.vue`                            | 单个角色条目卡片 UI；背面长文滚动在顶/底边界 **`preventDefault`** 避免带动外层卡列表                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `CharacterSidebarPanel.vue`                          | 侧栏「角色」：角色卡网格、**AI 检索** 抽屉、**角色立绘生成** 弹窗（预览 **2:3**、表单与底对齐操作钮）。<br>立绘弹窗：**画风 / 角色形象**；**SD 系**显示 **负面描述**（云端不显示）；关闭（应用/取消/×）时写入草稿与 **`file.meta`**（`characterBookStyle` + 当前角色 `promptZh`/`negativeZh`）。<br>监听 **`aiConfigSyncNonce`**，设置保存后同步文生图服务商 UI；实际出图仍由主进程 **`configGet`** 读最新配置。<br>检索区 **`AiIndexProgressBanner`**、**`AiTokenUsageBanner`** |
+| `CharacterRosterCard.vue`                            | 单个角色条目卡片（**2:3**）：正反面 3D 翻转、立绘与竖排/背面信息；**`charHoloCard`** + **`data-char-texture`** 驱动闪卡层（**`card__shine` / `card__glare`**）。<br>**`useCharacterCardTilt`** + **`useCharacterCardPopoverZoom`**；列表倾斜幅度约 **40%**，放大后 **100%**。<br>背面长文滚动在顶/底边界 **`preventDefault`** 避免带动外层列表；**`:hover` 时 `z-index` 抬高** 避免倾斜遮挡相邻卡 |
 | `ReaderHighlightFloat.vue`                           | 自定义高亮词旁的浮动操作条（依赖 `readerHighlightGeometry.ts` 与 `ReaderMain` 编辑器坐标）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `ReaderImageLightbox.vue`                            | 阅读区内插图的灯箱放大（`ReaderMain` 绑定 `imageLightboxSrc`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
@@ -1044,7 +1071,8 @@ src/
     - 对当前书 **「建索引」** 时，渲染进程 **`buildBookVectorIndex.ts`** 按章节分块，经 preload 调主进程嵌入并写入当前 **AI 数据缓存根** 下的 **`vector.sqlite`**（`better-sqlite3` + `sqlite-vec`，路径见下节）。
     - **内置**来源须先在设置页 **下载** 对应模型（**`embeddingReady`** 会在未下载时拦截建索引）；**远程**来源需配置接口与模型名。
     - 修改嵌入 **向量维度** 并保存时，设置面板会 **`showMessageBox`** 提示将清空已建索引。
-- **文生图 / 角色卡**：**「角色卡」** 页配置文生图后端与采样参数（见 `@shared/aiTypes` 的 **`AITxt2ImgConfig`**，默认 **`backend: "a1111"`**、`apiBaseUrl: http://127.0.0.1:7860`）；与主进程 **`aiTxt2Img.ts`**、`registerAiIpc` 暴露的 `ai:txt2img` 等 IPC 配合。接口类型与默认地址见下节 **「文生图接口类型」**。立绘文件落在 **`characterPortraitCacheDir`**（默认 **`userData/CharacterPortrait`**，按书名分子目录，见 `@shared/characterPortraitPaths`），主进程 **`characterPortraitFs.ts`** 负责迁移与复制。
+- **文生图 / 角色卡**：**「角色卡」** 页配置文生图后端与采样参数（见 `@shared/aiTypes` 的 **`AITxt2ImgConfig`**，默认 **`backend: "a1111"`**、`apiBaseUrl: http://127.0.0.1:7860`）；与主进程 **`aiTxt2Img.ts`**、`registerAiIpc` 暴露的 `ai:txt2img` 等 IPC 配合。服务商与默认地址见下节 **「文生图服务商」**。立绘文件落在 **`characterPortraitCacheDir`**（默认 **`userData/CharacterPortrait`**，按书名分子目录，见 `@shared/characterPortraitPaths`），主进程 **`characterPortraitFs.ts`** 负责迁移与复制。
+- **角色卡 3D 倾斜与闪卡纹理**：侧栏 **「角色」→ 更多 → 卡片效果** 子菜单切换全局纹理（持久化 **`characterCardTextureEffect`**，默认 **细腻光泽**）；详见下节 **「角色卡 3D 倾斜与闪卡纹理」**。实现思路及部分样式、贴图参考 [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css)（见 README 致谢）。
 - **技能与 Agent**：内置技能元数据与用户覆盖见 `@shared/aiSkills`；Agent 工具名与主进程 **`aiAgentTools.ts`** 对齐（`@shared/aiAgentSkillToolNames`）。流式对话与工具事件经 **`aiAgentChat.ts`** 推送到渲染层（`window.colorTxt.ai.onAgentEvent`）。
 - **会话与配置**：每本书（内容哈希）多会话，消息存 **同一向量库文件** 内 SQLite 表。运行时 **`config.json`** 位于 **AI 数据缓存根**（**不含**聊天正文；含 **`showTokenUsage`**、**`chat.tokenPricePerMillion`**、**`aiDataCacheDir`**、**`embedding.*`** 等，API Key 不落盘明文）。默认对话 Base URL 为 **`http://127.0.0.1:1234/v1`**（本地 LM Studio）。聊天 / 嵌入 / 文生图请求由主进程代理，经 IPC 流式回传（可中止）。
 
@@ -1073,24 +1101,103 @@ src/
 - **深度思考「已适配」**：侧栏开启「深度思考」时，应用会发送该厂商文档对应的思考开关；流式思考文案优先解析 `reasoning_content` / `reasoning` / `thinking` / `thought` 等 delta 字段（因上游而异）。
 - **未单独适配**：仍可使用对话与 Agent 工具，但不保证思考开关与思考流展示正常；自定义地址若与上表某行 **Base URL 一致**，保存后会自动匹配为对应预设项。
 - **向量嵌入**另有一套来源（**设置 → 向量模型 → 内置本地 / 远程 API**），见下节「内置向量模型与缓存目录」；**不**使用上表对话服务商下拉。
-- **文生图**（A1111 / ComfyUI）与 **语音朗读**（如 DashScope）为独立配置，亦不在上表；文生图预设见下节。
+- **文生图**（本地 A1111 / ComfyUI 与云端图像 API）与 **语音朗读**（阿里云通义 DashScope 云端语音）为独立配置，亦不在上表；文生图预设见下节。
 
-### 文生图接口类型
+### 文生图服务商
 
-角色立绘出图走 **设置 → 角色卡** 中的文生图配置（`txt2img.*`），与对话服务商无关。在 **接口类型** 下拉中选择预设会同时写入 **`backend`** 与默认 **接口地址**（`apiBaseUrl`）；下拉项为两行展示（类型名 + 默认 Base URL），与 **AI 阅读助手 → 服务商** 交互类似。**仅手改接口地址时不会根据 URL 反推或切换接口类型**（与对话侧「地址与服务商联动」不同）。
+角色立绘出图走 **设置 → 角色卡** 中的文生图配置（`txt2img.*`），与对话服务商无关。在 **服务商** 下拉中选择预设会同时写入 **`backend`** 与默认 **接口地址**（`apiBaseUrl`）；下拉项为两行展示（服务商名 + 默认 Base URL），与 **AI 阅读助手 → 服务商** 交互类似。**仅手改接口地址时不会根据 URL 反推或切换服务商**（与对话侧「地址与服务商联动」不同）。
 
 预设清单与代码 **`@shared/apiEndpointPresets`**（`TXT2IMG_BACKEND_PRESETS`）一致：
 
-| 接口类型 | `backend` | 默认 Base URL |
+| 服务商 | `backend` | 默认 Base URL |
 | -------- | --------- | ------------- |
-| AUTOMATIC1111 WebUI（txt2img） | `a1111` | `http://127.0.0.1:7860` |
-| ComfyUI（HTTP 队列） | `comfyui` | `http://127.0.0.1:8188` |
+| 本地 WebUI | `a1111` | `http://127.0.0.1:7860` |
+| 本地 ComfyUI | `comfyui` | `http://127.0.0.1:8188` |
+| OpenAI Images | `openai_images` | `https://api.openai.com/v1` |
+| 阿里云通义万相（DashScope） | `dashscope_wanx` | `https://dashscope.aliyuncs.com` |
+| Stability AI | `stability` | `https://api.stability.ai` |
+| OpenAI 兼容 Images 代理 | `openai_compat_images` | （用户填写） |
 
 说明：
 
-- **A1111**：主进程调用 WebUI **`/sdapi/v1/*`**（如 txt2img、采样器与 SD 模型列表）；设置页可拉取采样器 / 模型 / 高清修复放大算法。
-- **ComfyUI**：经 **`/prompt`** 提交工作流并轮询 **`/history`**；需在设置中粘贴 **Comfy 工作流 JSON**（导出 API 格式）。
-- 切换接口类型会**覆盖**当前 `apiBaseUrl` 为该行默认值；若需非默认端口，切换后再手改地址即可，`backend` 仍保持所选类型。
+- **A1111**：主进程调用 WebUI **`/sdapi/v1/*`**（如 txt2img、采样器与 SD 模型列表）；设置页可拉取采样器 / 模型 / 高清修复放大算法；**尺寸**为宽高数字输入（默认 **512×768**）。
+- **ComfyUI**：经 **`/prompt`** 提交工作流并轮询 **`/history`**；需在设置中粘贴 **Comfy 工作流 JSON**（导出 API 格式）；尺寸同为自定义宽高。
+- **云端四类**：`txt2img.apiKey` 经 **`SECRET_SLOT_AI_TXT2IMG_API_KEY`** 加密保存（与语音朗读、AI 阅读助手的通义密钥在应用内分开保存，界面文案均为 **「阿里云通义（DashScope）」** 系表述）。出图前由对话模型将 **画风 + 角色形象** 整理为自然语言 prompt（**`natural`** 族）或 SD tag（**`sd`** 族，含 Stability）。云端 **尺寸**为各后端固定档位（**`txt2ImgCloudSizePresets`**）；切换服务商时写入该后端 **默认云端模型**（**`txt2ImgCloudModelPresets`** / **`TXT2IMG_DEFAULT_CLOUD_MODEL`**），并按 **512×768** 参考比例选取档位（在比例足够接近的候选中选 **像素最少**，利于立绘省额度）。
+- **测试连接**：**`ai:txt2img`** 的 **`testConnection`** 走 **`aiTxt2ImgTestConnection.ts`**，仅校验地址/密钥（如 OpenAI `/models`、万相 models、Stability 账户等），**不出图、不消耗图像额度**；设置页由 **`AppConnectionTestButton`** + **`useConnectionTest`** 展示 pending/成功/失败（成功不弹框）。
+- **侧栏「角色立绘生成」**：**画风（本书）** + **角色形象** + **负面描述**（仅 **SD 系** backend 显示输入框；云端不展示，负面由设置内通用项与 prompt 整理承担）。字段仍持久化为 `characterBookStyle.stylePrefixZh` 与角色的 `promptZh` / `negativeZh`。关闭弹窗（应用 / 取消 / 关闭按钮）时同步草稿并 **`characterFileMetaPatch`**；打开弹窗或设置 **确定** 后递增的 **`aiConfigSyncNonce`** 会刷新侧栏对当前 **`txt2img.backend`** 的判断（实际出图 IPC 每次 **`configGet`** 读最新配置）。
+- 切换服务商会**覆盖**当前 `apiBaseUrl`（及云端默认模型/尺寸）；兼容代理可选手填地址；手改地址**不**反推服务商。
+
+### 角色卡 3D 倾斜与闪卡纹理
+
+侧栏角色卡支持指针 **3D 倾斜**、随倾斜变化的全息 **光泽/纹理**，以及角标 **原位放大查看**（放大后仍可点击正反面翻转）。与文生图配置无关；全局一项设置作用于当前书籍下全部角色卡。
+
+#### 入口与持久化
+
+| 项目 | 说明 |
+| ---- | ---- |
+| 菜单 | 侧栏 **「角色」** 活动栏 → 卡片 **「更多」**（`ReaderSidebar`）→ **「卡片效果」** 浮动子菜单（`AppShellMenuTeleport`，`aria-label="卡片效果"`） |
+| 设置键 | **`colorTxt.ui.settings`** → **`characterCardTextureEffect`**（`PersistedSettingsData` / `cacheStore.ts`） |
+| 默认值 | **`soft`（细腻光泽）**；未保存、空串或已移除的 id 经 **`normalizeCharacterCardTextureEffect`** 回退为默认 |
+| 应用范围 | 全局：切换后 **`CharacterSidebarPanel`** 网格内所有 **`CharacterRosterCard`** 同步 **`texture-effect`** |
+
+子菜单在 **「关闭」** 项下方有一条分隔线；**「梦幻竖纹」**、**「梦幻虹彩」** 项上方各有一条分隔线（`dividerBefore: true`）。
+
+#### 可选纹理（`@shared/characterCardTextureEffects`）
+
+| id | 菜单名 | 说明 |
+| --- | ------ | ---- |
+| `off` | 关闭 | 无倾斜驱动的高光层（`useCharacterCardTilt` 禁用） |
+| `soft` | 细腻光泽 | **默认**；仅 **`card__glare`** 径向高光（`characterCardHolo.css`） |
+| `rainbow` | 迷离反闪 | Reverse Holo 风格 |
+| `holo` | 梦幻竖纹 | 竖向彩虹扫描条 |
+| `shiny-v` | 幻彩波纹 | sunpillar 基底 + Shiny V 覆写 |
+| `trainer-full-art` | 波纹钢印 | sunpillar + 训练家底图 |
+| `v-max` | 幻彩极光 | VMAX 金属/渐变纹理 |
+| `v-star` | 极光异画 | VSTAR pastel |
+| `trainer-gallery` | 梦幻虹彩 | 斜向彩虹条 + 柔光晕染 |
+| `rainbow-rare` | 彩虹秘稀 | Rainbow Rare |
+| `rainbow-alt` | 彩虹异画 | Rainbow Alt（整卡无 mask 时对 foil 等有专门覆写） |
+| `cosmos` | 星云幻彩 | 星系分层贴图 + 扫描线 |
+
+（旧设置中的无效 id 加载时自动变为 **细腻光泽**。）
+
+#### DOM 与样式分层
+
+单卡结构（`CharacterRosterCard.vue`）：
+
+```text
+cardShellWrap（悬停抬高 z-index）
+  └ cardShell.charHoloCard[data-char-texture]     ← shellStyle：倾斜变量 + popover 平移/缩放
+       └ card__perspective
+            └ card__tilt                         ← rotateX/Y + --char-popover-rotate-y
+                 └ card__flip                     ← 正反面 rotateY(180°)
+                      ├ cardFace.cardFront       ← 立绘、竖排名、角标（放大/编辑）
+                      └ cardFace.cardBack        ← 背面文案；实底 + isolation（避免全息层发黑）
+                 每层 cardFace 上叠加 card__shine / card__glare（pointer-events: none）
+```
+
+- **样式文件**：`styles/characterCardHolo.css`（变量、透视、**off/soft**、popover 旋转、减弱动效 **`prefers-reduced-motion`**）；`styles/characterCardHoloEffects.css`（各纹理块，文件头注释含 id 与中文名）。
+- **贴图**：`renderer/public/card-textures/`（`grain.webp`、`glitter.png`、`geometric.png`、`illusion-mask.png`、`metal.png`、`trainerbg.png`、`cosmos-*.png` 等），经 CSS 变量 **`--char-grain`**、**`--char-glitter`**、**`--char-foil-*`** 引用。
+- **与宝可梦卡版的差异**：角色卡 **整卡铺满** 立绘区域，**不使用** 卡图 `mask` / `clip-path` 分区；部分效果（如彩虹异画）在参考实现里依赖 mask 的层已按整卡场景改写（例如关闭多余 `glare::after`、无 mask 时不用 foil 层）。
+
+#### 倾斜与光泽联动
+
+- **驱动**：`useCharacterCardTilt` 根据指针在卡面上的位置更新目标 **`rotateX` / `rotateY`**（列表乘以 **`rotateScale` 0.4**，放大后 **1.0**）。
+- **弹簧**：`utils/characterCardSpring.ts` 中 **`stepSpringScalar`**；跟手与回正参数分离，避免移出时生硬归零。
+- **光泽**：`effectFromRotation()` 由当前旋转反推指针与背景偏移，写入 **`--char-pointer-x/y`**、**`--char-pointer-from-center`** 等，保证回弹时高光与倾斜同步。
+- **注意**：倾斜层（**`card__tilt`**）及子级 **勿加 `filter`**，否则会破坏 **`preserve-3d`** 翻转透视。
+
+#### 原位放大（查看大图）
+
+- **触发**：卡角 **放大镜** → `CharacterSidebarPanel` 设置 **`popoverCardId`** → 对应卡 **`popover-open`**。
+- **动画**：`useCharacterCardPopoverZoom` 计算视口居中 **`translate` + `scale`**；Y 轴旋转在 **`card__tilt`** 上过渡（约 **420–450ms**）。
+- **交互**：半透明遮罩点击关闭；放大过程中其它卡不可点；倾斜在 popover 激活后短暂延迟复位。
+- **占位**：`Teleport` 后原网格位置用 **`cardShellPlaceholder`**（同 **2:3** 比例）避免布局跳动。
+
+#### 背面与无障碍
+
+- **背面**：`cardBack` 使用 **`background: var(--bg)`** + **`isolation: isolate`**；背面 **`card__shine`** 使用 **`mix-blend-mode: soft-light`** 并降低 opacity，避免在浅底/侧栏上 **`color-dodge`** 发灰发黑。
+- **动效**：`prefers-reduced-motion: reduce` 时取消倾斜 transform 并隐藏 shine/glare 动画。
 
 ### 内置向量模型与缓存目录
 
@@ -1158,7 +1265,7 @@ src/
 
 ### `localStorage` 与 `file.meta` 中的 AI 相关键
 
-- **`colorTxt.ui.settings`**：**`aiSkillsEnabled`**、**`aiSkillOverrides`**、**`aiCustomSkills`**、**`aiAssistantDeepThinking`**、**`aiAssistantSpoilerSafe`**；**`characterPortraitCacheDir`**（空串表示使用默认 `userData/CharacterPortrait`）。其余界面与阅读字段仍见「数据存储说明」中的 `PersistedSettingsData` / `cacheStore.ts`。
+- **`colorTxt.ui.settings`**：**`aiSkillsEnabled`**、**`aiSkillOverrides`**、**`aiCustomSkills`**、**`aiAssistantDeepThinking`**、**`aiAssistantSpoilerSafe`**；**`characterPortraitCacheDir`**（空串表示使用默认 `userData/CharacterPortrait`）；**`characterCardTextureEffect`**（角色卡闪卡纹理 id，默认 **`soft`**，见 **「角色卡 3D 倾斜与闪卡纹理」**）。其余界面与阅读字段仍见「数据存储说明」中的 `PersistedSettingsData` / `cacheStore.ts`。
 - **`colorTxt.file.meta`**：**`characterRoster`**、**`characterBookStyle`**（类型见 `@shared/characterTypes`），与书签、阅读进度、电子书转换路径等字段并列，详见 `FileMetaRecord` / `fileMetaStore.ts`。
 
 ### 主要 Vue 组件（AI / 角色与相关设置）
@@ -1167,15 +1274,16 @@ src/
 
 | 文件 | 主要功能 |
 | ---- | -------- |
-| `ReaderSidebar.vue` | 侧栏容器：活动栏含 **AI 助手**、**角色** 等（`constants/readerSidebarTab.ts`）。<br>挂载 **`AiAssistantPanel`**、**`CharacterSidebarPanel`** 等；向文件列表下发分类/排序状态并上抛事件 |
+| `ReaderSidebar.vue` | 侧栏容器：活动栏含 **AI 助手**、**角色** 等（`constants/readerSidebarTab.ts`）。<br>挂载 **`AiAssistantPanel`**、**`CharacterSidebarPanel`** 等；**角色 → 更多 → 卡片效果** 子菜单（`CHARACTER_CARD_TEXTURE_EFFECTS`、分隔线、`AppShellMenuTeleport`）；`v-model:character-card-texture-effect` 与 `App.vue` 同步 |
 | `SettingsPanel.vue` | 设置壳层：确定时校验向量维度、**数据/模型缓存目录迁移**、`configSet` 与 `emit('apply')`；「清除缓存」见数据存储章 |
 | `SettingsTabBar.vue` | 页签含 `ai` / `vectorModel` / `txt2img` / `skills`。<br>`showAiExtensionTabs` 为 false 时隐藏向量模型 / 角色卡 / 技能扩展页签 |
-| `SettingsAIPanel.vue` | 「AI 阅读助手」：总开关；服务商 + 接口地址；API Key；模型 / 温度等；Token 开关与单价；**`aiDataCacheDir`**（数据缓存目录） |
+| `SettingsAIPanel.vue` | 「AI 阅读助手」：总开关；服务商 + 地址；API Key + **测试连接**；模型 / 温度；Token 与 **`aiDataCacheDir`** |
 | `ApiEndpointInput.vue` | 接口地址手填输入框 |
 | `AiTokenUsageBanner.vue` | Token 消耗与花费展示条（阅读助手、角色检索共用） |
 | `AiIndexProgressBanner.vue` | 向量建索引进度条（阅读助手建索引、角色检索前补索引） |
-| `SettingsVectorModelPanel.vue` | 「向量模型」：内置/远程；远程：**服务商** + 双 URL + 嵌入模型（建议+手输）；切块与 **`ragTopK`** |
-| `SettingsTxt2ImgPanel.vue` | 「角色卡」：**接口类型**（两行下拉，选中写入默认地址）+ **接口地址**（手改不反推类型）；A1111 采样 / 高清修复、Comfy 工作流；**`AppPullFlashButton`** 拉取采样器 / SD 模型列表。<br>**角色立绘缓存根目录** |
+| `SettingsVectorModelPanel.vue` | 「向量模型」：内置/远程；远程含 **测试连接** + 嵌入模型（建议+手输）；切块与 **`ragTopK`** |
+| `SettingsTxt2ImgPanel.vue` | 「角色卡」：服务商 + 地址；云端 Key/**测试连接**/模型建议/固定尺寸；OpenAI 画质；A1111/Comfy 参数；**立绘缓存目录** |
+| `AppConnectionTestButton.vue` | 设置页共用测试连接按钮（`useConnectionTest`） |
 | `SettingsSkillsPanel.vue` | 「技能」：内置技能开关与覆盖、自定义技能列表；footer「添加技能」打开 **`SettingsSkillEditModal`** |
 | `SettingsSkillEditModal.vue` | 自定义技能新建/编辑弹窗 |
 | `AppPullFlashButton.vue` | 设置面板内刷新模型/采样器列表等，完成态闪光反馈 |
@@ -1185,12 +1293,15 @@ src/
 | `AiAssistantDetailsFold.vue` | 助手详情折叠（与 `directives/aiStickScroll`、`useAiFoldContentSelectAll` 配合） |
 | `AiToolFoldBody.vue` | 工具折叠正文；超长章压缩进度中 **`当前进度：M/N`** 高亮（`utils/aiToolFoldBody.ts`） |
 | `AiMarkdown.vue` | 助手回复 Markdown（`aiMarkdownMarkedSetup` / `Prep`、`aiMarkdownChapterRef`） |
-| `CharacterSidebarPanel.vue` | 侧栏「角色」：角色卡/立绘、**AI 检索**（深度思考/防剧透）；检索区下 **`AiIndexProgressBanner`**、**`AiTokenUsageBanner`** |
-| `CharacterRosterCard.vue` | 角色卡 UI；背面滚动边界不带动外层列表 |
+| `CharacterSidebarPanel.vue` | 侧栏「角色」：角色卡网格、**`popoverCardId`** 原位放大、**AI 检索**、**立绘生成**弹窗（2:3、底对齐按钮、关闭时保存文案）；下发 **`characterCardTextureEffect`**；**`aiConfigSyncNonce`** 同步文生图 UI |
+| `CharacterRosterCard.vue` | 角色卡（2:3、3D 翻转、全息层、倾斜、原位放大）；背面滚动边界不带动外层列表 |
+| `AppShellMenuTeleport.vue` | 侧栏 Teleport 菜单壳（卡片效果 flyout 等） |
 
 ### 源码与 IPC 速查
 
 主进程 **`registerAiIpc.ts`** 集中注册 `ai:*` IPC（含 **`ai:embedding:builtin:*`** 列表/状态/下载/清缓存、**`ai:migrateDataCacheRoot`** / **`ai:migrateBuiltinModelCacheRoot`**）；**`aiPaths.ts`**、**`aiDataFs.ts`**、**`aiConfig.ts`**、**`aiVectorDb.ts`**、**`aiEmbedding.ts`**、**`embedding/*`**、**`aiChat.ts`**、**`aiAgentChat.ts`**、**`aiChatThinking.ts`** 等见 **「开发」** 目录树与 **「内置向量模型与缓存目录」**；渲染侧 **`ai/buildBookVectorIndex.ts`**、**`ai/embeddingReady.ts`**、**`shared/builtinEmbeddingModels.ts`**。预加载 **`window.colorTxt.ai.*`**（含 **`embeddingBuiltinLoad`**、**`migrateDataCacheRoot`** 等）见 **「`src/preload/index.ts`（预加载）」**。
+
+角色卡倾斜/放大/纹理（无独立 IPC）：**`@shared/characterCardTextureEffects`**、**`composables/useCharacterCardTilt.ts`**、**`composables/useCharacterCardPopoverZoom.ts`**、**`utils/characterCardSpring.ts`**、**`styles/characterCardHolo*.css`**、**`components/CharacterRosterCard.vue`**；见 **「角色卡 3D 倾斜与闪卡纹理」**。
 
 ## 数据存储说明
 
@@ -1200,7 +1311,7 @@ src/
 
 | 键名                    | 大致内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `colorTxt.ui.settings`  | 界面与阅读偏好：字体、字号与行高倍数，空行压缩/行首缩进、**`readerEditShowLineNumbers`**、**`readerEditMinimap`**、**`editAutoRefreshChapterList`**、高级换行、内容着色，**`monacoCustomHighlight`**，**Monaco 平滑滚动 `monacoSmoothScrolling`**，**`highlightColorsLight` / `highlightColorsDark`**（长度不足 `MIN_HIGHLIGHT_COLORS` 时解析失败则回退默认；与默认逐项相同可不写入），章节匹配规则、主题、侧栏是否展开，侧栏宽度、章节字数显示，启动是否恢复会话、最近文件条数上限、全屏正文区宽度，**`ebookConvertOutputDir`**（空串表示与源书同目录；首次无该键时默认 **`userData/ConvertedTxt`**），**`fileCategory`**、**`fileSort`**、**`fileCategoryCatalog`**，**可选 `shortcutBindings`**，**`readerPaletteOverridesLight` / `readerPaletteOverridesDark`** 等。**AI 与立绘缓存相关字段**（`aiSkillsEnabled`、`aiSkillOverrides`、`aiCustomSkills`、`aiAssistantDeepThinking`、`aiAssistantSpoilerSafe`、`characterPortraitCacheDir` 等）见 **「AI 阅读助手与相关能力」** →「`localStorage` 与 `file.meta` 中的 AI 相关键」。完整字段见 `PersistedSettingsData` / `cacheStore.ts`。 |
+| `colorTxt.ui.settings`  | 界面与阅读偏好：字体、字号与行高倍数，空行压缩/行首缩进、**`readerEditShowLineNumbers`**、**`readerEditMinimap`**、**`editAutoRefreshChapterList`**、高级换行、内容着色，**`monacoCustomHighlight`**，**Monaco 平滑滚动 `monacoSmoothScrolling`**，**`highlightColorsLight` / `highlightColorsDark`**（长度不足 `MIN_HIGHLIGHT_COLORS` 时解析失败则回退默认；与默认逐项相同可不写入），章节匹配规则、主题、侧栏是否展开，侧栏宽度、章节字数显示，启动是否恢复会话、最近文件条数上限、全屏正文区宽度，**`ebookConvertOutputDir`**（空串表示与源书同目录；首次无该键时默认 **`userData/ConvertedTxt`**），**`fileCategory`**、**`fileSort`**、**`fileCategoryCatalog`**，**可选 `shortcutBindings`**，**`readerPaletteOverridesLight` / `readerPaletteOverridesDark`** 等。**AI 与立绘缓存相关字段**（`aiSkillsEnabled`、`aiSkillOverrides`、`aiCustomSkills`、`aiAssistantDeepThinking`、`aiAssistantSpoilerSafe`、`characterPortraitCacheDir`、**`characterCardTextureEffect`** 等）见 **「AI 阅读助手与相关能力」** →「`localStorage` 与 `file.meta` 中的 AI 相关键」。完整字段见 `PersistedSettingsData` / `cacheStore.ts`。 |
 | `colorTxt.session`      | 会话快照：当前文件路径、视口底部物理行号（`viewportBottomLine`，用于下次启动恢复阅读位置；是否恢复受设置项控制；章节列表在重新打开文件后由流式解析生成）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `colorTxt.file.list`    | 导入目录后的文件列表缓存：每项为 `TxtFileItem`（`path`、`name`、`size`，可选 **`category`**、**`addedAt`**）；与侧栏分类筛选、排序及 `fileListService` 规范化一致                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `colorTxt.file.meta`    | 按文件路径聚合的元数据：书签、阅读进度百分比、**Monaco `saveViewState()`**（`editorViewState`）、**`viewportTopPhysicalLine`**、**`highlightWordsByIndex`**；**电子书**：**`convertedTxtPath`**、**`sourceMtimeMsAtConvert`**。**角色侧栏相关字段**（`characterRoster`、`characterBookStyle` 等）见 **「AI 阅读助手与相关能力」** →「`localStorage` 与 `file.meta` 中的 AI 相关键」。其它字段见 `FileMetaRecord` / `fileMetaStore.ts`。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

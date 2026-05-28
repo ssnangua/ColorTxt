@@ -2395,7 +2395,7 @@ defineExpose({
   list-style: none;
   margin: 0;
   box-sizing: border-box;
-  padding: 0 0 4px;
+  padding: 0;
   overflow-y: auto;
   min-height: 0;
   display: flex;
@@ -2405,6 +2405,10 @@ defineExpose({
 
 .aiHistoryDropdownList::-webkit-scrollbar-thumb {
   border-right-width: 0;
+}
+
+.aiHistoryDropdownList + .aiHistoryDropdownList {
+  padding-top: 8px;
 }
 
 .aiHistoryDropdownDate {

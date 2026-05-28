@@ -354,9 +354,9 @@ onBeforeUnmount(() => {
 }
 
 .fontMenuDivider {
+  flex-shrink: 0;
   height: 1px;
   background: var(--border);
-  margin: 0;
 }
 
 .fontMenuList {
@@ -366,17 +366,25 @@ onBeforeUnmount(() => {
 }
 
 .fontMenuItem {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
   text-align: left;
   border: none;
   background: transparent;
   color: var(--list-item-fg);
-  padding: 8px 10px;
+  padding: 0 10px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .fontMenuItem:hover {

@@ -696,8 +696,11 @@ const api = {
     portraitTxt2ImgToPath: (payload: {
       outputPath: string;
       styleZh?: string;
-      promptZh: string;
-      negativeZh: string;
+      /** 角色形象（自然语言） */
+      appearanceZh?: string;
+      /** @deprecated 使用 appearanceZh */
+      promptZh?: string;
+      negativeZh?: string;
     }) =>
       ipcRenderer.invoke("ai:portrait:txt2imgToPath", payload) as Promise<
         { ok: true } | { ok: false; error: string }

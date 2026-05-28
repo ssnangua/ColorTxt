@@ -19,6 +19,8 @@ import {
 } from "@shared/apiEndpointPresets";
 import AppCustomSelect, { type CustomSelectItem } from "./AppCustomSelect.vue";
 import ApiEndpointInput from "./ApiEndpointInput.vue";
+import AppConnectionTestButton from "./AppConnectionTestButton.vue";
+import type { ConnectionTestResult } from "../composables/useConnectionTest";
 import AppPullFlashButton, {
   type AppPullFlashDone,
 } from "./AppPullFlashButton.vue";
@@ -117,14 +119,11 @@ function buildRemoteEmbeddingIpcDraft() {
   };
 }
 
-type AiTestPhase = "idle" | "pending" | "ok" | "fail";
-
 const showEmbedKey = ref(false);
 const embedModelsLoading = ref(false);
 const embedPullBtnRef = ref<InstanceType<typeof AppPullFlashButton> | null>(
   null,
 );
-const embedTestPhase = ref<AiTestPhase>("idle");
 const embedModelOptions = ref<string[]>([]);
 type EmbedProbeFlashPhase = "idle" | "loading" | "success" | "fail";
 const embedProbeFlashPhase = ref<EmbedProbeFlashPhase>("idle");
@@ -140,8 +139,6 @@ function embedProbeTargetModel(): string {
 function isEmbedProbeStale(seq: number, targetModel: string): boolean {
   return seq !== embedProbeSeq || embedProbeTargetModel() !== targetModel;
 }
-
-const embedLastResolvedFingerprint = ref<string | null>(null);
 
 const embeddingProviderOptions: {
   id: "builtin" | "remote";
@@ -197,32 +194,10 @@ const embedEndpointFingerprint = computed(() => {
   return `${e.provider}\0${e.baseUrl.trim()}\0${e.apiKey}\0${e.remoteModel.trim()}\0${e.dimension}`;
 });
 
-watch(embedEndpointFingerprint, (fp) => {
-  if (embedTestPhase.value === "pending") return;
-  if (embedLastResolvedFingerprint.value === null) return;
-  if (fp !== embedLastResolvedFingerprint.value) {
-    embedTestPhase.value = "idle";
-    embedLastResolvedFingerprint.value = null;
-  }
-});
-
 const embedModelDisplayLabel = computed(() => {
   const id = modelValue.value.embedding.builtinModel.trim();
   const m = getBuiltinEmbeddingModel(id);
   return m ? m.uiListLabel : id;
-});
-
-const embedTestIconHtml = computed(() => {
-  switch (embedTestPhase.value) {
-    case "pending":
-      return icons.refresh;
-    case "ok":
-      return icons.success;
-    case "fail":
-      return icons.fail;
-    default:
-      return icons.unknow;
-  }
 });
 
 const embedProbeIconHtml = computed(() => {
@@ -480,46 +455,21 @@ async function clearBuiltinCache() {
   else await refreshBuiltinDownloadStatus();
 }
 
-async function testEmbedding() {
-  if (embedTestPhase.value === "pending") return;
-  embedTestPhase.value = "pending";
-  const fpWhenStarted = embedEndpointFingerprint.value;
-  try {
-    const payload: Record<string, unknown> = {
-      provider: modelValue.value.embedding.provider,
-      remoteModel: modelValue.value.embedding.remoteModel,
-      builtinModel: modelValue.value.embedding.builtinModel,
-      dimension: modelValue.value.embedding.dimension,
-    };
-    if (isBuiltin.value) {
-      payload.config = modelValue.value;
-    } else {
-      Object.assign(payload, buildRemoteEmbeddingIpcDraft());
-    }
-    const r = await window.colorTxt.ai.testEmbedding(payload);
-    if (embedEndpointFingerprint.value !== fpWhenStarted) {
-      embedTestPhase.value = "idle";
-      embedLastResolvedFingerprint.value = null;
-      return;
-    }
-    if (r.ok) {
-      embedTestPhase.value = "ok";
-      embedLastResolvedFingerprint.value = fpWhenStarted;
-    } else {
-      await appAlert(r.error);
-      embedTestPhase.value = "fail";
-      embedLastResolvedFingerprint.value = fpWhenStarted;
-    }
-  } catch (e) {
-    if (embedEndpointFingerprint.value !== fpWhenStarted) {
-      embedTestPhase.value = "idle";
-      embedLastResolvedFingerprint.value = null;
-      return;
-    }
-    await appAlert(e instanceof Error ? e.message : String(e));
-    embedTestPhase.value = "fail";
-    embedLastResolvedFingerprint.value = fpWhenStarted;
+async function runEmbedConnectionTest(): Promise<ConnectionTestResult> {
+  const payload: Record<string, unknown> = {
+    provider: modelValue.value.embedding.provider,
+    remoteModel: modelValue.value.embedding.remoteModel,
+    builtinModel: modelValue.value.embedding.builtinModel,
+    dimension: modelValue.value.embedding.dimension,
+  };
+  if (isBuiltin.value) {
+    payload.config = modelValue.value;
+  } else {
+    Object.assign(payload, buildRemoteEmbeddingIpcDraft());
   }
+  const r = await window.colorTxt.ai.testEmbedding(payload);
+  if (r.ok) return { ok: true };
+  return { ok: false, error: r.error };
 }
 
 </script>
@@ -720,23 +670,10 @@ async function testEmbedding() {
                     :busy="embedModelsLoading"
                     @pull="(done) => void refreshEmbedModels({ pullDone: done })"
                   />
-                  <button
-                    type="button"
-                    class="btn"
-                    :class="{
-                      success: embedTestPhase === 'ok',
-                      danger: embedTestPhase === 'fail',
-                    }"
-                    :disabled="embedTestPhase === 'pending'"
-                    @click="testEmbedding"
-                  >
-                    <span
-                      class="iconSvg"
-                      :class="{ 'iconSvg--spinning': embedTestPhase === 'pending' }"
-                      v-html="embedTestIconHtml"
-                    />
-                    测试连接
-                  </button>
+                  <AppConnectionTestButton
+                    :fingerprint="embedEndpointFingerprint"
+                    :on-test="runEmbedConnectionTest"
+                  />
                 </div>
               </div>
             </div>
@@ -804,7 +741,7 @@ async function testEmbedding() {
             />
           </div>
           <p class="settingsHint">
-            检索原文时，从全书语义索引中取回的相关性最高的段落数量。<br />数值越大，参考内容越多，但回答可能更慢；一般
+            检索原文时，从全书语义索引中取回的相关性最高的片段数量。<br />数值越大，参考内容越多，但回答也可能越慢；一般
             3～8 条即可。
           </p>
         </div>

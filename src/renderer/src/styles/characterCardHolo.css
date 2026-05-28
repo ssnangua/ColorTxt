@@ -1,0 +1,215 @@
+/**
+ * 角色卡全息/纹理（思路与部分样式参考 pokemon-cards-css）
+ * https://github.com/simeydotme/pokemon-cards-css
+ *
+ * 本文件效果：off 关闭 | soft 细腻光泽
+ * 其余效果见 characterCardHoloEffects.css（区块注释含菜单中文名）
+ */
+
+.charHoloCard {
+  --char-card-radius: 10px;
+  --char-grain: url("/card-textures/grain.webp");
+  --char-glitter: url("/card-textures/glitter.png");
+  --char-foil-geometric: url("/card-textures/geometric.png");
+  --char-foil-illusion: url("/card-textures/illusion-mask.png");
+  --char-foil-metal: url("/card-textures/metal.png");
+  --char-foil-trainer: url("/card-textures/trainerbg.png");
+  --char-glittersize: 25%;
+  --char-effect-space: 5%;
+  --char-effect-angle: 133deg;
+  --char-effect-imgsize: cover;
+  --char-sunpillar-clr-1: #f80e35;
+  --char-sunpillar-clr-2: #eedf10;
+  --char-sunpillar-clr-3: #21e985;
+  --char-sunpillar-clr-4: #0dbde9;
+  --char-sunpillar-clr-5: #c929f1;
+  --char-sunpillar-clr-6: #f80e35;
+  --char-red: #f80e35;
+  --char-yellow: #eedf10;
+  --char-green: #21e985;
+  --char-blue: #0dbde9;
+  --char-violet: #c929f1;
+  --char-rotate-x: 0deg;
+  --char-rotate-y: 0deg;
+  --char-popover-rotate-y: 0deg;
+  --char-pointer-x: 50%;
+  --char-pointer-y: 50%;
+  --char-pointer-from-center: 0;
+  --char-pointer-from-top: 0.5;
+  --char-pointer-from-left: 0.5;
+  --char-background-x: 50%;
+  --char-background-y: 50%;
+  --char-card-opacity: 1;
+  /* 光泽强度倍率（默认 1；列表与放大一致，按效果在 CSS 内单独微调） */
+  --char-effect-scale: 1;
+  --char-effect-opacity: calc(var(--char-card-opacity) * var(--char-effect-scale, 1));
+}
+
+.charHoloCard,
+.charHoloCard .card__tilt,
+.charHoloCard .card__flip,
+.charHoloCard .cardFace {
+  border-radius: var(--char-card-radius);
+}
+
+/* 透视专用层：自身不做 transform/filter，避免压平翻转 */
+.charHoloCard .card__perspective {
+  transform-style: preserve-3d;
+}
+
+/* 悬停倾斜，勿加 filter——会破坏子级 3D 翻转透视 */
+.charHoloCard .card__tilt {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  transform-style: preserve-3d;
+  transform-origin: center center;
+  transform: rotateY(calc(var(--char-rotate-x) + var(--char-popover-rotate-y)))
+    rotateX(var(--char-rotate-y));
+  /* 悬停倾斜由弹簧逐帧驱动；放大旋转见 .cardShell--popover .card__tilt */
+  will-change: transform;
+}
+
+/* popover 旋转（与 shell 平移/缩放分离） */
+.charHoloCard.cardShell--popover .card__tilt {
+  transition: transform 0.45s cubic-bezier(0.33, 1, 0.64, 1);
+}
+
+/* 正反翻转：勿用 filter（会压平 3D）；box-shadow 与 rotateY 同元素，保留透视梯形 */
+.charHoloCard .card__flip {
+  grid-area: 1 / 1;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: transparent;
+  transform-style: preserve-3d;
+  transform-origin: center center;
+  transition:
+    transform 0.38s ease,
+    box-shadow 0.35s ease;
+  will-change: transform;
+  border-radius: var(--char-card-radius);
+  /* 默认轻投影（2025-03 已缩小一档；勿随意加大） */
+  box-shadow:
+    0 4px 8px -4px color-mix(in srgb, #000 34%, transparent),
+    0 2px 5px -4px color-mix(in srgb, #000 26%, transparent);
+}
+
+/* 仅指针倾斜时加深；列表 :hover 不单独加阴影 */
+.charHoloCard[style*="--char-card-opacity: 1"] .card__flip {
+  box-shadow:
+    0 6px 12px -5px color-mix(in srgb, #000 40%, transparent),
+    0 3px 7px -4px color-mix(in srgb, #000 30%, transparent),
+    0 0 10px -6px color-mix(in srgb, var(--primary, #5b9bd5) 16%, transparent);
+}
+
+.charHoloCard.cardShell--popover .card__flip {
+  box-shadow:
+    0 8px 18px -6px color-mix(in srgb, #000 40%, transparent),
+    0 3px 10px -5px color-mix(in srgb, #000 32%, transparent);
+}
+
+.charHoloCard .card__flip > .cardFace {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  outline: 1px solid transparent;
+}
+
+.charHoloCard .cardFront > .portrait,
+.charHoloCard .cardFront > .card__shine,
+.charHoloCard .cardFront > .card__glare,
+.charHoloCard .cardBack > .card__shine,
+.charHoloCard .cardBack > .card__glare {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.charHoloCard .card__shine,
+.charHoloCard .card__glare {
+  display: grid;
+  border-radius: inherit;
+  pointer-events: none;
+  /* 高于角色名/背面文案，低于角标按钮 */
+  z-index: 5;
+}
+
+.charHoloCard .card__shine::before,
+.charHoloCard .card__shine::after,
+.charHoloCard .card__glare::before,
+.charHoloCard .card__glare::after {
+  content: "";
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* --- off · 关闭 --- */
+.charHoloCard[data-char-texture="off"] .card__shine,
+.charHoloCard[data-char-texture="off"] .card__glare,
+.charHoloCard[data-char-texture="off"] .card__shine::before,
+.charHoloCard[data-char-texture="off"] .card__shine::after,
+.charHoloCard[data-char-texture="off"] .card__glare::before,
+.charHoloCard[data-char-texture="off"] .card__glare::after {
+  display: none;
+}
+
+/* --- soft · 细腻光泽（仅 glare，普通卡高光）--- */
+.charHoloCard[data-char-texture="soft"] .card__shine,
+.charHoloCard[data-char-texture="soft"] .card__shine::before,
+.charHoloCard[data-char-texture="soft"] .card__shine::after {
+  display: none;
+}
+
+.charHoloCard[data-char-texture="soft"] .card__glare {
+  opacity: calc(var(--char-effect-opacity) * 0.72);
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsla(0, 0%, 100%, 0.55) calc(3% + 3% * var(--char-effect-scale, 1)),
+    hsla(0, 0%, 100%, 0.22) calc(15% + 15% * var(--char-effect-scale, 1)),
+    hsla(0, 0%, 0%, 0.5) 85%
+  );
+  mix-blend-mode: overlay;
+  filter: brightness(calc(0.65 + 0.35 * var(--char-effect-scale, 1))) contrast(1.15);
+}
+
+.charHoloCard[data-char-texture="soft"] .cardBack > .card__glare {
+  opacity: calc(var(--char-effect-opacity) * 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .charHoloCard {
+    --char-popover-rotate-y: 0deg !important;
+  }
+  .cardShell--popover,
+  .charHoloCard.cardShell--popover .card__tilt {
+    transition: none !important;
+  }
+  .charHoloCard .card__tilt {
+    transform: none !important;
+  }
+  .charHoloCard .card__flip {
+    transition: box-shadow 0.35s ease;
+  }
+  .charHoloCard.flipped .card__flip {
+    transform: none !important;
+  }
+  .charHoloCard .card__shine,
+  .charHoloCard .card__glare {
+    opacity: 0 !important;
+  }
+}

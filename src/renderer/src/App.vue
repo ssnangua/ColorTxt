@@ -25,6 +25,8 @@ import type {
   CharacterBookStylePersisted,
   CharacterRosterEntry,
 } from "@shared/characterTypes";
+import type { CharacterCardTextureEffectId } from "@shared/characterCardTextureEffects";
+import { DEFAULT_CHARACTER_CARD_TEXTURE_EFFECT } from "@shared/characterCardTextureEffects";
 import {
   mergeAiCustomSkills,
   mergeAiSkillOverrides,
@@ -145,11 +147,13 @@ const fullscreenFileListPopoversOpen = ref(false);
 const fullscreenAiAssistantPopoversOpen = ref(false);
 /** 角色卡：编辑/添加角色抽屉打开 */
 const fullscreenCharacterDrawerOpen = ref(false);
+const fullscreenCharacterPopoversOpen = ref(false);
 const fullscreenSidebarPopoversSuppressCollapse = computed(
   () =>
     fullscreenFileListPopoversOpen.value ||
     fullscreenAiAssistantPopoversOpen.value ||
-    fullscreenCharacterDrawerOpen.value,
+    fullscreenCharacterDrawerOpen.value ||
+    fullscreenCharacterPopoversOpen.value,
 );
 /** 全屏下打开设置/配色弹框期间，禁用左缘感应自动唤起侧栏 */
 const suppressFullscreenSidebarHover = ref(false);
@@ -437,6 +441,9 @@ const ebookConvertOutputDir = ref(
 );
 /** 角色立绘缓存根目录（绝对路径）；启动后由持久化或默认 userData/CharacterPortrait 填充 */
 const characterPortraitCacheDir = ref("");
+const characterCardTextureEffect = ref<CharacterCardTextureEffectId>(
+  DEFAULT_CHARACTER_CARD_TEXTURE_EFFECT,
+);
 /** 技能开关（设置 → 技能） */
 const aiSkillsEnabled = ref<Record<string, boolean>>(
   mergeAiSkillsEnabled(undefined, []),
@@ -799,6 +806,7 @@ const persistence = useAppPersistence({
   globalHighlightWords,
   ebookConvertOutputDir,
   characterPortraitCacheDir,
+  characterCardTextureEffect,
   fileCategory,
   fileSort,
   fileCategoryCatalog,
@@ -837,6 +845,7 @@ watch(fileListEditing, (editing, wasEditing) => {
 watch(aiAssistantDeepThinking, () => persistSettings());
 watch(aiAssistantSpoilerSafe, () => persistSettings());
 watch(globalHighlightWords, () => persistSettings(), { deep: true });
+watch(characterCardTextureEffect, () => persistSettings());
 watch(
   voiceReadSettings,
   () => persistSettings(),
@@ -2419,6 +2428,7 @@ useAppShellThemeWatch({
           :ai-assistant-tab-visible="aiFeaturesEnabled"
           :character-portrait-tab-visible="txt2imgFeatureEnabled"
           :character-portrait-cache-dir="characterPortraitCacheDir"
+          v-model:character-card-texture-effect="characterCardTextureEffect"
           :character-roster="currentFileCharacterRoster"
           :character-book-style="currentFileCharacterBookStyle"
           v-model:deep-thinking="aiAssistantDeepThinking"
@@ -2473,6 +2483,9 @@ useAppShellThemeWatch({
           "
           @update:fullscreen-character-drawer-open="
             fullscreenCharacterDrawerOpen = $event
+          "
+          @update:fullscreen-character-popovers-open="
+            fullscreenCharacterPopoversOpen = $event
           "
           @update:file-list-editing="fileListEditing = $event"
           @request-expand-panel="showSidebar = true"

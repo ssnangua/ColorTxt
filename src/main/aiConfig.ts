@@ -12,6 +12,7 @@ import {
 import {
   SECRET_SLOT_AI_CHAT_API_KEY,
   SECRET_SLOT_AI_EMBEDDING_API_KEY,
+  SECRET_SLOT_AI_TXT2IMG_API_KEY,
 } from "@shared/secretSlots";
 import {
   aiConfigFilePath,
@@ -68,6 +69,7 @@ function stripApiKeysForDisk(cfg: AIConfig): AIConfig {
   const disk = structuredClone(cfg);
   disk.chat.apiKey = "";
   disk.embedding.apiKey = "";
+  disk.txt2img.apiKey = "";
   return disk;
 }
 
@@ -80,6 +82,7 @@ async function hydrateApiKeysFromVault(cfg: AIConfig): Promise<{
 
   const chatVault = await getSecret(SECRET_SLOT_AI_CHAT_API_KEY);
   const embedVault = await getSecret(SECRET_SLOT_AI_EMBEDDING_API_KEY);
+  const txt2imgVault = await getSecret(SECRET_SLOT_AI_TXT2IMG_API_KEY);
 
   if (chatVault) {
     next.chat.apiKey = chatVault;
@@ -93,10 +96,17 @@ async function hydrateApiKeysFromVault(cfg: AIConfig): Promise<{
     migratedPlaintext = true;
   }
 
+  if (txt2imgVault) {
+    next.txt2img.apiKey = txt2imgVault;
+  } else if (next.txt2img.apiKey.trim()) {
+    migratedPlaintext = true;
+  }
+
   if (migratedPlaintext) {
     await setSecretsBatch({
       [SECRET_SLOT_AI_CHAT_API_KEY]: next.chat.apiKey,
       [SECRET_SLOT_AI_EMBEDDING_API_KEY]: next.embedding.apiKey,
+      [SECRET_SLOT_AI_TXT2IMG_API_KEY]: next.txt2img.apiKey,
     });
   }
 
@@ -146,6 +156,7 @@ export async function saveAiConfig(cfg: AIConfig): Promise<void> {
   await setSecretsBatch({
     [SECRET_SLOT_AI_CHAT_API_KEY]: cfg.chat.apiKey,
     [SECRET_SLOT_AI_EMBEDDING_API_KEY]: cfg.embedding.apiKey,
+    [SECRET_SLOT_AI_TXT2IMG_API_KEY]: cfg.txt2img.apiKey,
   });
   await writeConfigJson(cfg);
 }

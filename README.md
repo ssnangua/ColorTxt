@@ -48,7 +48,7 @@
 - **AI阅读助手**：可以让 **AI** 帮忙分析剧情，或者回答小说的相关问题。
 - **角色卡生成**：借助 **AI** 检索小说中角色的相关信息生成摘要，通过**文生图**生成角色立绘。
 - **支持编辑模式**：方便对小说内容进行修改（_错别字坚决不能忍！_）
-- **语音朗读功能**：支持 EdgeTTS、系统语音和 DashScope。
+- **语音朗读功能**：支持 Edge TTS、系统语音和阿里云通义（DashScope）云端语音。
 
 ### 关于「其他电子书格式」的支持
 
@@ -113,12 +113,16 @@ OpenAI 接口拼接方式：
 | BGE Small ZH v1.5 _（~47 MB，维度：512）_      | 高质量中文嵌入                      |
 | Multilingual E5 Small _（~118 MB，维度：384）_ | 多语言支持（100+ 语言），综合性能好 |
 
-**文生图**：用于「角色卡」生成角色立绘，目前只支持本地 WebUI/ComfyUI 或兼容接口：
+**文生图**：用于「角色卡」生成角色立绘，支持以下接口：
 
-| 接口类型                       | 默认接口地址            |
-| ------------------------------ | ----------------------- |
-| AUTOMATIC1111 WebUI（txt2img） | `http://127.0.0.1:7860` |
-| ComfyUI（HTTP 队列）           | `http://127.0.0.1:8188` |
+| 服务商                      | 默认接口地址                     |
+| --------------------------- | -------------------------------- |
+| 本地 WebUI                  | `http://127.0.0.1:7860`          |
+| 本地 ComfyUI                | `http://127.0.0.1:8188`          |
+| OpenAI Images               | `https://api.openai.com/v1`      |
+| 阿里云通义万相（DashScope） | `https://dashscope.aliyuncs.com` |
+| Stability AI                | `https://api.stability.ai`       |
+| _自定义 OpenAI 兼容服务_    | _（手动输入接口地址）_           |
 
 ## 预设字体
 
@@ -149,3 +153,4 @@ OpenAI 接口拼接方式：
 - 基于 [libmspack](https://github.com/kyz/libmspack) 移植了一套 JavaScript 实现，以支持对 `.chm` 格式的解析
 - 其他电子书格式的解析，主要参考 [foliate-js](https://github.com/johnfactotum/foliate-js) 的实现
 - AI 聊天助手和语音朗读的基础功能，主要参考了 [ReadAny](https://github.com/codedogQBY/ReadAny) 的实现
+- 角色卡 3D 卡片效果的实现思路及部分样式、贴图资源参考 [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css)

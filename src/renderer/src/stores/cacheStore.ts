@@ -26,6 +26,7 @@ import {
   mergeAiSkillsEnabled,
 } from "@shared/aiSkills";
 import type { VoiceReadSettings } from "../constants/voiceRead";
+import { normalizeCharacterCardTextureEffect } from "@shared/characterCardTextureEffects";
 
 export type PersistedSettingsData = {
   theme?: "vs" | "vs-dark";
@@ -109,6 +110,8 @@ export type PersistedSettingsData = {
   voiceRead?: Partial<VoiceReadSettings>;
   /** 全局高亮词：跨文件匹配，键为色值索引字符串，值为该索引下的高亮词 */
   globalHighlightWords?: Record<string, string[]>;
+  /** 角色卡列表纹理/全息效果 */
+  characterCardTextureEffect?: string;
 };
 
 export type PersistedSettingsLoadResult = {
@@ -331,6 +334,10 @@ export function loadPersistedSettingsData(
   if (typeof obj.characterPortraitCacheDir === "string") {
     data.characterPortraitCacheDir = obj.characterPortraitCacheDir.trim();
   }
+
+  data.characterCardTextureEffect = normalizeCharacterCardTextureEffect(
+    obj.characterCardTextureEffect,
+  );
 
   if (obj.voiceRead && typeof obj.voiceRead === "object") {
     const vr = obj.voiceRead as Record<string, unknown>;

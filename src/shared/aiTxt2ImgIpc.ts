@@ -6,16 +6,21 @@
 export type AiTxt2ImgOp =
   | "listA1111Samplers"
   | "listA1111Upscalers"
-  | "listA1111SdModels";
+  | "listA1111SdModels"
+  | "testConnection";
 
 export type AiTxt2ImgInvokeDraft = {
   op: AiTxt2ImgOp;
   /** WebUI 根地址，如 http://127.0.0.1:7860 */
-  apiBaseUrl: string;
+  apiBaseUrl?: string;
+  backend?: string;
+  apiKey?: string;
+  cloudModel?: string;
 };
 
 export type AiTxt2ImgInvokeResult =
   | { ok: true; op: "listA1111Samplers"; samplers: string[] }
   | { ok: true; op: "listA1111Upscalers"; upscalers: string[] }
   | { ok: true; op: "listA1111SdModels"; sdModels: string[] }
+  | { ok: true; op: "testConnection" }
   | { ok: false; error: string };

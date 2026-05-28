@@ -1,0 +1,820 @@
+/**
+ * pokemon-cards-css 全息效果移植（整卡铺满，无 clip-path / mask 分区）
+ * https://github.com/simeydotme/pokemon-cards-css
+ *
+ * 区块注释格式：data-char-texture · 菜单中文名
+ * off/soft 在 characterCardHolo.css
+ *
+ * rainbow 迷离反闪
+ * holo 梦幻竖纹 | shiny-v 幻彩波纹 | trainer-full-art 波纹钢印 | v-max 幻彩极光 | v-star 极光异画 
+ * trainer-gallery 梦幻虹彩 | rainbow-rare 彩虹秘稀 | rainbow-alt 彩虹异画 | cosmos 星云幻彩
+ */
+
+.charHoloCard:not([data-char-texture="off"]):not([data-char-texture="soft"])
+  .card__shine {
+  opacity: var(--char-effect-opacity);
+  mix-blend-mode: color-dodge;
+}
+
+/* 背面：浅底 + 文字；避免 color-dodge 叠透明底/侧栏导致整体发黑（正面有立绘不受影响） */
+.charHoloCard:not([data-char-texture="off"]):not([data-char-texture="soft"])
+  .cardBack
+  > .card__shine {
+  mix-blend-mode: soft-light;
+  opacity: calc(var(--char-effect-opacity) * 0.55);
+}
+
+.charHoloCard:not([data-char-texture="off"]) .cardBack > .card__glare {
+  opacity: calc(var(--char-effect-opacity) * 0.45);
+}
+
+/* --- rainbow · 迷离反闪 (Reverse Holo) --- */
+.charHoloCard[data-char-texture="rainbow"] .card__shine {
+  opacity: calc(
+    1.2 * var(--char-effect-opacity) - var(--char-pointer-from-center)
+  );
+  background-image:
+    radial-gradient(
+      circle at var(--char-pointer-x) var(--char-pointer-y),
+      #fff 5%,
+      #000 50%,
+      #fff 80%
+    ),
+    linear-gradient(-45deg, #000 15%, #fff, #000 85%),
+    var(--char-grain);
+  background-blend-mode: soft-light, difference;
+  background-size: 120% 120%, 200% 200%, cover;
+  background-position:
+    center center,
+    calc(100% * var(--char-pointer-from-left))
+      calc(100% * var(--char-pointer-from-top)),
+    center center;
+  /* filter: brightness(0.55) contrast(1.5) saturate(1); */
+  filter: brightness(0.35) contrast(1.5) saturate(1);
+}
+
+.charHoloCard[data-char-texture="rainbow"] .card__glare {
+  opacity: var(--char-effect-opacity);
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsla(0, 0%, 100%, 0.8) 10%,
+    hsla(0, 0%, 100%, 0.5) 20%,
+    hsla(0, 0%, 0%, 0.75) 90%
+  );
+  mix-blend-mode: overlay;
+  /* filter: brightness(0.7) contrast(1.5); */
+  filter: brightness(0.5) contrast(1.5);
+}
+
+/* --- holo · 梦幻竖纹 (Rare Holo) --- */
+.charHoloCard[data-char-texture="holo"] .card__shine {
+  --char-scanlines-space: 1px;
+  --char-scanlines-light: #666;
+  --char-scanlines-dark: black;
+  /* --char-bars: 3%; */
+  --char-bars: 5%;
+  --char-bar-color: hsla(0, 0%, 70%, 1);
+  --char-bar-bg: hsla(0, 0%, 0%, 1);
+
+  background-image:
+    repeating-linear-gradient(
+      110deg,
+      var(--char-violet),
+      var(--char-blue),
+      var(--char-green),
+      var(--char-yellow),
+      var(--char-red),
+      var(--char-violet),
+      var(--char-blue),
+      var(--char-green),
+      var(--char-yellow),
+      var(--char-red),
+      var(--char-violet),
+      var(--char-blue),
+      var(--char-green),
+      var(--char-yellow),
+      var(--char-red)
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--char-scanlines-dark) calc(var(--char-scanlines-space) * 0),
+      var(--char-scanlines-dark) calc(var(--char-scanlines-space) * 2),
+      var(--char-scanlines-light) calc(var(--char-scanlines-space) * 2),
+      var(--char-scanlines-light) calc(var(--char-scanlines-space) * 4)
+    );
+  background-position:
+    calc(((50% - var(--char-background-x)) * 2.6) + 50%)
+      calc(((50% - var(--char-background-y)) * 3.5) + 50%),
+    center center;
+  background-size: 400% 400%, cover;
+  background-blend-mode: overlay;
+  /* filter: brightness(1.1) contrast(1.1) saturate(1.2); */
+  filter: brightness(0.6) contrast(1.1) saturate(1.2);
+}
+
+.charHoloCard[data-char-texture="holo"] .card__shine::before {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      var(--char-bar-bg) calc(var(--char-bars) * 2),
+      var(--char-bar-color) calc(var(--char-bars) * 3),
+      var(--char-bar-bg) calc(var(--char-bars) * 3.5),
+      var(--char-bar-color) calc(var(--char-bars) * 4),
+      var(--char-bar-bg) calc(var(--char-bars) * 5),
+      var(--char-bar-bg) calc(var(--char-bars) * 14)
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--char-bar-bg) calc(var(--char-bars) * 2),
+      var(--char-bar-color) calc(var(--char-bars) * 3),
+      var(--char-bar-bg) calc(var(--char-bars) * 3.5),
+      var(--char-bar-color) calc(var(--char-bars) * 4),
+      var(--char-bar-bg) calc(var(--char-bars) * 5),
+      var(--char-bar-bg) calc(var(--char-bars) * 10)
+    );
+  background-position:
+    calc((((50% - var(--char-background-x)) * 1.65) + 50%) +
+      (var(--char-background-y) * 0.5))
+      var(--char-background-x),
+    calc((((50% - var(--char-background-x)) * -0.9) + 50%) -
+      (var(--char-background-y) * 0.75))
+      var(--char-background-y);
+  background-size: 200% 200%, 200% 200%;
+  background-blend-mode: screen;
+  /* filter: brightness(1.15) contrast(1.1); */
+  filter: brightness(1.15) contrast(0.8);
+  mix-blend-mode: hard-light;
+}
+
+.charHoloCard[data-char-texture="holo"] .card__shine::after {
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsla(0, 0%, 90%, 0.8) 0%,
+    hsla(0, 0%, 78%, 0.1) 25%,
+    hsl(0, 0%, 0%) 90%
+  );
+  background-position: center center;
+  background-size: cover;
+  mix-blend-mode: luminosity;
+  /* filter: brightness(0.6) contrast(4); */
+  filter: brightness(0.5) contrast(4);
+}
+
+.charHoloCard[data-char-texture="holo"] .card__glare {
+  opacity: calc(var(--char-effect-opacity) * 0.8);
+  filter: brightness(0.8) contrast(1.5);
+  mix-blend-mode: overlay;
+}
+
+.charHoloCard[data-char-texture="holo"] .card__glare::after {
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsl(180, 100%, 95%) 5%,
+    /* hsla(0, 0%, 39%, 0.25) 55%, */
+    hsla(0, 0%, 39%, 0.25) 100%,
+    hsla(0, 0%, 0%, 0.36) 110%
+  );
+  mix-blend-mode: overlay;
+  filter: brightness(0.6) contrast(3);
+}
+
+/* --- cosmos · 星云幻彩 --- */
+.charHoloCard[data-char-texture="cosmos"] .card__shine {
+  --char-space: 4%;
+
+  background-image:
+    url("/card-textures/cosmos-bottom.png"),
+    repeating-linear-gradient(
+      82deg,
+      hsl(53, 65%, 60%) calc(var(--char-space) * 1),
+      hsl(93, 56%, 50%) calc(var(--char-space) * 2),
+      hsl(176, 54%, 49%) calc(var(--char-space) * 3),
+      hsl(228, 59%, 55%) calc(var(--char-space) * 4),
+      hsl(283, 60%, 55%) calc(var(--char-space) * 5),
+      hsl(326, 59%, 51%) calc(var(--char-space) * 6),
+      hsl(326, 59%, 51%) calc(var(--char-space) * 7),
+      hsl(283, 60%, 55%) calc(var(--char-space) * 8),
+      hsl(228, 59%, 55%) calc(var(--char-space) * 9),
+      hsl(176, 54%, 49%) calc(var(--char-space) * 10),
+      hsl(93, 56%, 50%) calc(var(--char-space) * 11),
+      hsl(53, 65%, 60%) calc(var(--char-space) * 12)
+    ),
+    radial-gradient(
+      farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+      hsla(180, 100%, 89%, 0.5) 5%,
+      hsla(180, 14%, 57%, 0.3) 40%,
+      hsl(0, 0%, 0%) 130%
+    );
+  background-blend-mode: color-burn, multiply;
+  background-position:
+    center center,
+    calc(10% + (var(--char-pointer-from-left) * 80%))
+      calc(10% + (var(--char-pointer-from-top) * 80%)),
+    center center;
+  background-size: cover, 400% 900%, cover;
+  filter: brightness(1) contrast(1) saturate(0.8);
+}
+
+.charHoloCard[data-char-texture="cosmos"] .card__shine::before {
+  z-index: 2;
+  background-image:
+    url("/card-textures/cosmos-middle-trans.png"),
+    repeating-linear-gradient(
+      82deg,
+      hsl(53, 65%, 60%) calc(var(--char-space) * 1),
+      hsl(93, 56%, 50%) calc(var(--char-space) * 2),
+      hsl(176, 54%, 49%) calc(var(--char-space) * 3),
+      hsl(228, 59%, 55%) calc(var(--char-space) * 4),
+      hsl(283, 60%, 55%) calc(var(--char-space) * 5),
+      hsl(326, 59%, 51%) calc(var(--char-space) * 6),
+      hsl(326, 59%, 51%) calc(var(--char-space) * 7),
+      hsl(283, 60%, 55%) calc(var(--char-space) * 8),
+      hsl(228, 59%, 55%) calc(var(--char-space) * 9),
+      hsl(176, 54%, 49%) calc(var(--char-space) * 10),
+      hsl(93, 56%, 50%) calc(var(--char-space) * 11),
+      hsl(53, 65%, 60%) calc(var(--char-space) * 12)
+    );
+  background-blend-mode: lighten, multiply;
+  background-position:
+    center center,
+    calc(15% + (var(--char-pointer-from-left) * 70%))
+      calc(15% + (var(--char-pointer-from-top) * 70%)),
+    center center;
+  background-size: cover, 400% 900%, cover;
+  filter: brightness(1.25) contrast(1.75) saturate(0.8);
+  mix-blend-mode: overlay;
+}
+
+.charHoloCard[data-char-texture="cosmos"] .card__shine::after {
+  z-index: 3;
+  background-image:
+    url("/card-textures/cosmos-top-trans.png"),
+    repeating-linear-gradient(
+      82deg,
+      hsl(53, 65%, 60%) calc(var(--char-space) * 1),
+      hsl(93, 56%, 50%) calc(var(--char-space) * 2),
+      hsl(176, 54%, 49%) calc(var(--char-space) * 3),
+      hsl(228, 59%, 55%) calc(var(--char-space) * 4),
+      hsl(283, 60%, 55%) calc(var(--char-space) * 5),
+      hsl(326, 59%, 51%) calc(var(--char-space) * 6),
+      hsl(326, 59%, 51%) calc(var(--char-space) * 7),
+      hsl(283, 60%, 55%) calc(var(--char-space) * 8),
+      hsl(228, 59%, 55%) calc(var(--char-space) * 9),
+      hsl(176, 54%, 49%) calc(var(--char-space) * 10),
+      hsl(93, 56%, 50%) calc(var(--char-space) * 11),
+      hsl(53, 65%, 60%) calc(var(--char-space) * 12)
+    );
+  background-blend-mode: multiply, multiply;
+  background-position:
+    center center,
+    calc(20% + (var(--char-pointer-from-left) * 60%))
+      calc(20% + (var(--char-pointer-from-top) * 60%)),
+    center center;
+  background-size: cover, 400% 900%, cover;
+  filter: brightness(1.25) contrast(1.75) saturate(0.8);
+  mix-blend-mode: multiply;
+}
+
+.charHoloCard[data-char-texture="cosmos"] .card__glare {
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsla(204, 100%, 95%, 0.8) 5%,
+    hsla(250, 15%, 20%, 1) 150%
+  );
+  filter: brightness(0.75) contrast(2) saturate(2);
+  mix-blend-mode: overlay;
+  opacity: calc(
+    var(--char-effect-opacity) * (0.25 + var(--char-pointer-from-center))
+  );
+}
+
+.charHoloCard[data-char-texture="cosmos"] .card__glare::after {
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsl(280, 100%, 96%) 5%,
+    /* hsl(0, 0%, 10%) 60% */
+    hsl(0, 0%, 10%) 100%
+  );
+  filter: brightness(0.75) contrast(2.5) saturate(2);
+  mix-blend-mode: soft-light;
+  opacity: calc((1 - var(--char-pointer-from-top) * 0.75) * var(--char-effect-scale, 1));
+}
+
+/* --- trainer-gallery · 梦幻虹彩 --- */
+.charHoloCard[data-char-texture="trainer-gallery"] .card__shine {
+  --char-tg-space: 5%;
+  --char-tg-angle: -22deg;
+  --char-tg-imgsize: 300% 400%;
+
+  background-image: repeating-linear-gradient(
+    var(--char-tg-angle),
+    hsla(283, 49%, 60%, 0.75) calc(var(--char-tg-space) * 1),
+    hsla(2, 74%, 59%, 0.75) calc(var(--char-tg-space) * 2),
+    hsla(53, 67%, 53%, 0.75) calc(var(--char-tg-space) * 3),
+    hsla(93, 56%, 52%, 0.75) calc(var(--char-tg-space) * 4),
+    hsla(176, 38%, 50%, 0.75) calc(var(--char-tg-space) * 5),
+    hsla(228, 100%, 77%, 0.75) calc(var(--char-tg-space) * 6),
+    hsla(283, 49%, 61%, 0.75) calc(var(--char-tg-space) * 7)
+  );
+  background-blend-mode: color-dodge;
+  background-size: var(--char-tg-imgsize);
+  background-position:
+    0% calc(var(--char-background-y) * 1),
+    var(--char-background-x) var(--char-background-y);
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.3) + 0.5))
+    contrast(2.3) saturate(1);
+}
+
+.charHoloCard[data-char-texture="trainer-gallery"] .card__shine::after {
+  background-image: radial-gradient(
+    farthest-corner ellipse at calc((var(--char-pointer-x) * 0.5) + 25%)
+        calc((var(--char-pointer-y) * 0.5) + 25%),
+    hsl(0, 0%, 100%) 5%,
+    hsla(300, 100%, 11%, 0.6) 40%,
+    hsl(0, 0%, 22%) 120%
+  );
+  background-position: center center;
+  background-size: 400% 500%;
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.2) + 0.4))
+    contrast(0.85) saturate(1.1);
+  mix-blend-mode: hard-light;
+}
+
+.charHoloCard[data-char-texture="trainer-gallery"] .card__glare {
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsla(0, 0%, 100%, 1) 10%,
+    hsla(0, 0%, 100%, 0.6) 35%,
+    hsla(180, 11%, 35%, 1) 60%
+  );
+  mix-blend-mode: soft-light;
+}
+
+/* --- sunpillar 共用基底：shiny-v 幻彩波纹 / v-star 极光异画 / trainer-full-art 波纹钢印 --- */
+.charHoloCard[data-char-texture="shiny-v"] .card__shine,
+.charHoloCard[data-char-texture="shiny-v"] .card__shine::after,
+.charHoloCard[data-char-texture="v-star"] .card__shine,
+.charHoloCard[data-char-texture="v-star"] .card__shine::after,
+.charHoloCard[data-char-texture="trainer-full-art"] .card__shine,
+.charHoloCard[data-char-texture="trainer-full-art"] .card__shine::after {
+  --char-space: 5%;
+  --char-angle: 133deg;
+  --char-foil-layer: var(--char-foil-illusion);
+  --char-imgsize: cover;
+
+  background-image:
+    var(--char-foil-layer),
+    repeating-linear-gradient(
+      0deg,
+      var(--char-sunpillar-clr-1) calc(var(--char-space) * 1),
+      var(--char-sunpillar-clr-2) calc(var(--char-space) * 2),
+      var(--char-sunpillar-clr-3) calc(var(--char-space) * 3),
+      var(--char-sunpillar-clr-4) calc(var(--char-space) * 4),
+      var(--char-sunpillar-clr-5) calc(var(--char-space) * 5),
+      var(--char-sunpillar-clr-6) calc(var(--char-space) * 6),
+      var(--char-sunpillar-clr-1) calc(var(--char-space) * 7)
+    ),
+    repeating-linear-gradient(
+      var(--char-angle),
+      #0e152e 0%,
+      hsl(180, 10%, 60%) 3.8%,
+      hsl(180, 29%, 66%) 4.5%,
+      hsl(180, 10%, 60%) 5.2%,
+      #0e152e 10%,
+      #0e152e 12%
+    ),
+    radial-gradient(
+      farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+      hsla(0, 0%, 0%, 0.1) 12%,
+      hsla(0, 0%, 0%, 0.15) 20%,
+      hsla(0, 0%, 0%, 0.25) 120%
+    );
+  background-blend-mode: soft-light, hue, hard-light;
+  background-size: var(--char-imgsize), 200% 700%, 300% 100%, 200% 100%;
+}
+
+/* --- v-max · 幻彩极光 --- */
+.charHoloCard[data-char-texture="v-max"] .card__shine {
+  --char-space: 6%;
+  --char-angle: 133deg;
+  --char-imgsize: cover;
+  background-blend-mode: difference, luminosity, soft-light;
+  background-size: var(--char-imgsize), 1100% 1100%, 600% 600%, 200% 200%;
+  background-position:
+    center,
+    var(--char-background-x) var(--char-background-y),
+    var(--char-background-x) var(--char-background-y),
+    var(--char-background-x) var(--char-background-y);
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.4) + 0.4))
+    contrast(2) saturate(1);
+}
+
+.charHoloCard[data-char-texture="v-max"] .card__shine::after {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      var(--char-sunpillar-clr-1) calc(var(--char-space) * 1),
+      var(--char-sunpillar-clr-2) calc(var(--char-space) * 2),
+      var(--char-sunpillar-clr-3) calc(var(--char-space) * 3),
+      var(--char-sunpillar-clr-4) calc(var(--char-space) * 4),
+      var(--char-sunpillar-clr-5) calc(var(--char-space) * 5),
+      var(--char-sunpillar-clr-6) calc(var(--char-space) * 6),
+      var(--char-sunpillar-clr-1) calc(var(--char-space) * 7)
+    ),
+    repeating-linear-gradient(
+      var(--char-angle),
+      #0e152e 0%,
+      hsl(180, 10%, 60%) 3.8%,
+      hsl(180, 29%, 66%) 4.5%,
+      hsl(180, 10%, 60%) 5.2%,
+      #0e152e 10%,
+      #0e152e 12%
+    );
+  background-blend-mode: hue, hard-light;
+  background-size: 200% 700%, 300% 100%, 200% 100%;
+  background-position:
+    0% var(--char-background-y),
+    var(--char-background-x) var(--char-background-y),
+    var(--char-background-x) var(--char-background-y);
+  mix-blend-mode: lighten;
+  opacity: calc(
+    0.3 * var(--char-effect-opacity) +
+      var(--char-effect-opacity) * var(--char-pointer-from-center) * 0.5
+  );
+  filter: saturate(1.5);
+}
+
+.charHoloCard[data-char-texture="v-max"] .card__glare {
+  mix-blend-mode: hard-light;
+  /* filter: brightness(1) contrast(1); */
+  filter: brightness(1) contrast(0);
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsla(0, 0%, 100%, 0.75) 0%,
+    hsl(0, 0%, 0%) 120%
+  );
+  opacity: calc(
+    0.2 * var(--char-effect-opacity) +
+      var(--char-effect-opacity) * var(--char-pointer-from-center) * 0.8
+  );
+}
+
+/* --- rainbow-rare · 彩虹秘稀 --- */
+.charHoloCard[data-char-texture="rainbow-rare"] .card__shine {
+  --char-r-clr-1: hsl(0, 57%, 37%);
+  --char-r-clr-2: hsl(40, 53%, 39%);
+  --char-r-clr-3: hsl(90, 60%, 35%);
+  --char-r-clr-4: hsl(180, 60%, 35%);
+  --char-r-clr-5: hsl(180, 60%, 35%);
+  --char-r-clr-6: hsl(210, 57%, 39%);
+  --char-r-clr-7: hsl(280, 55%, 31%);
+
+  background-image:
+    linear-gradient(-45deg, var(--char-r-clr-1), var(--char-r-clr-5)),
+    var(--char-glitter),
+    linear-gradient(
+      -30deg,
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1)
+    );
+  background-blend-mode: luminosity, soft-light;
+  background-size:
+    200% 200%,
+    var(--char-glittersize) var(--char-glittersize),
+    400% 400%;
+  background-position:
+    calc(25% + (50% * var(--char-pointer-from-left)))
+      calc(25% + (50% * var(--char-pointer-from-top))),
+    center center,
+    calc(25% + (var(--char-pointer-x) / 2)) calc(25% + (var(--char-pointer-y) / 2));
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.25) + 0.6))
+    contrast(2.2) saturate(0.75);
+}
+
+.charHoloCard[data-char-texture="rainbow-rare"] .card__shine::after {
+  background-image:
+    var(--char-glitter),
+    linear-gradient(
+      -60deg,
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1)
+    );
+  background-blend-mode: soft-light;
+  background-size: var(--char-glittersize) var(--char-glittersize), 400% 400%;
+  background-position: center center, var(--char-pointer-x) var(--char-pointer-y);
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.3) + 0.55))
+    contrast(2) saturate(1);
+  mix-blend-mode: color-dodge;
+}
+
+.charHoloCard[data-char-texture="rainbow-rare"] .card__shine::before {
+  background-image: var(--char-foil-illusion);
+  background-size: 33%;
+  background-position: center center;
+  filter: brightness(2.5) contrast(1);
+  opacity: calc(
+    (var(--char-pointer-from-center) + 0.4) * 0.6 * var(--char-effect-scale, 1)
+  );
+  background-blend-mode: difference;
+  mix-blend-mode: darken;
+}
+
+.charHoloCard[data-char-texture="rainbow-rare"] .card__glare {
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsl(0, 0%, 80%),
+    hsla(187, 10%, 85%, 0.25) 30%,
+    hsl(197, 6%, 25%) 120%
+  );
+  /* filter: brightness(0.9) contrast(1.75); */
+  filter: brightness(0.9) contrast(0);
+  opacity: calc(var(--char-pointer-from-center) * 0.9 * var(--char-effect-scale, 1));
+  mix-blend-mode: hard-light;
+}
+
+/* --- rainbow-alt · 彩虹异画 --- */
+.charHoloCard[data-char-texture="rainbow-alt"] .card__shine {
+  --char-r-clr-1: hsl(0, 57%, 37%);
+  --char-r-clr-2: hsl(40, 53%, 39%);
+  --char-r-clr-3: hsl(90, 60%, 35%);
+  --char-r-clr-4: hsl(180, 60%, 35%);
+  --char-r-clr-5: hsl(180, 60%, 35%);
+  --char-r-clr-6: hsl(210, 57%, 39%);
+  --char-r-clr-7: hsl(280, 55%, 31%);
+
+  background-image:
+    repeating-linear-gradient(
+      var(--char-effect-angle),
+      hsla(283, 49%, 60%, 0.75) calc(var(--char-effect-space) * 1),
+      hsla(2, 70%, 58%, 0.75) calc(var(--char-effect-space) * 2),
+      hsla(53, 67%, 53%, 0.75) calc(var(--char-effect-space) * 3),
+      hsla(93, 56%, 52%, 0.75) calc(var(--char-effect-space) * 4),
+      hsla(176, 38%, 50%, 0.75) calc(var(--char-effect-space) * 5),
+      hsla(228, 100%, 77%, 0.75) calc(var(--char-effect-space) * 6),
+      hsla(283, 49%, 61%, 0.75) calc(var(--char-effect-space) * 7)
+    ),
+    var(--char-glitter),
+    linear-gradient(
+      -30deg,
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1)
+    );
+  background-size:
+    200% 400%,
+    var(--char-glittersize) var(--char-glittersize),
+    400% 400%;
+  background-position:
+    0% calc(var(--char-background-y) * 1),
+    center center,
+    calc(var(--char-background-x) * 1.5) calc(var(--char-background-y) * 1.5);
+  background-blend-mode: luminosity, overlay;
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.3) + 0.3))
+    contrast(3) saturate(1.8);
+}
+
+.charHoloCard[data-char-texture="rainbow-alt"] .card__shine::after {
+  background-image:
+    var(--char-glitter),
+    linear-gradient(
+      -60deg,
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1),
+      var(--char-r-clr-2),
+      var(--char-r-clr-3),
+      var(--char-r-clr-4),
+      var(--char-r-clr-5),
+      var(--char-r-clr-6),
+      var(--char-r-clr-7),
+      var(--char-r-clr-1)
+    );
+  background-blend-mode: overlay;
+  background-size: var(--char-glittersize) var(--char-glittersize), 400% 400%;
+  background-position:
+    center center,
+    calc(var(--char-background-x) * -1.5)
+      calc(var(--char-background-y) * -1.5);
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.5) + 0.6))
+    contrast(3) saturate(1);
+  mix-blend-mode: color-dodge;
+  opacity: calc(
+    (1.2 + (var(--char-pointer-from-center) / 2) * -1) * var(--char-effect-scale, 1)
+  );
+}
+
+.charHoloCard[data-char-texture="rainbow-alt"] .card__shine::before {
+  background-image: var(--char-foil-geometric);
+  background-size: cover;
+  background-position: center center;
+  filter: brightness(1.5) contrast(1.5);
+  opacity: calc(
+    (var(--char-pointer-from-center) + 0.6) * 0.4 * var(--char-effect-scale, 1)
+  );
+  background-blend-mode: difference;
+  mix-blend-mode: color-dodge;
+}
+
+/* --- v-star · 极光异画 --- */
+.charHoloCard[data-char-texture="v-star"] .card__shine {
+  --char-foil-layer: var(--char-foil-geometric);
+  --char-imgsize: 18% 15%;
+
+  background-position:
+    center center,
+    0% var(--char-background-y),
+    var(--char-background-x) var(--char-background-y),
+    var(--char-background-x) var(--char-background-y);
+  background-blend-mode: exclusion, hue, hard-light;
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.25) + 0.35))
+    contrast(1.8) saturate(1.75);
+}
+
+.charHoloCard[data-char-texture="v-star"] .card__shine::after {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      var(--char-sunpillar-clr-1) calc(var(--char-space) * 1),
+      var(--char-sunpillar-clr-2) calc(var(--char-space) * 2),
+      var(--char-sunpillar-clr-3) calc(var(--char-space) * 3),
+      var(--char-sunpillar-clr-4) calc(var(--char-space) * 4),
+      var(--char-sunpillar-clr-5) calc(var(--char-space) * 5),
+      var(--char-sunpillar-clr-6) calc(var(--char-space) * 6),
+      var(--char-sunpillar-clr-1) calc(var(--char-space) * 7)
+    ),
+    repeating-linear-gradient(
+      var(--char-angle),
+      #0e152e 0%,
+      hsl(180, 10%, 60%) 3.8%,
+      hsl(180, 29%, 66%) 4.5%,
+      hsl(180, 10%, 60%) 5.2%,
+      #0e152e 10%,
+      #0e152e 12%
+    );
+  background-blend-mode: hue, hard-light;
+  background-size: 200% 700%, 300% 100%, 200% 100%;
+  background-position:
+    0% var(--char-background-y),
+    var(--char-background-x) var(--char-background-y),
+    var(--char-background-x) var(--char-background-y);
+  mix-blend-mode: lighten;
+  opacity: calc(
+    0.3 * var(--char-effect-opacity) +
+      var(--char-effect-opacity) * var(--char-pointer-from-center) * 0.5
+  );
+  filter: saturate(1.5);
+}
+
+.charHoloCard[data-char-texture="v-star"] .card__glare {
+  opacity: calc(var(--char-effect-opacity) * 0.72);
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsla(0, 0%, 100%, 0.55) calc(3% + 3% * var(--char-effect-scale, 1)),
+    hsla(0, 0%, 100%, 0.22) calc(15% + 15% * var(--char-effect-scale, 1)),
+    hsla(0, 0%, 0%, 0.5) 85%
+  );
+  mix-blend-mode: overlay;
+  filter: brightness(calc(0.65 + 0.35 * var(--char-effect-scale, 1))) contrast(1.15);
+}
+
+/* --- shiny-v · 幻彩波纹 --- */
+.charHoloCard[data-char-texture="shiny-v"] .card__shine {
+  background-position:
+    center center,
+    0% var(--char-background-y),
+    calc(var(--char-background-x) + (var(--char-background-y) * 0.2))
+      var(--char-background-y),
+    var(--char-background-x) var(--char-background-y);
+  background-blend-mode: exclusion, hue, hard-light;
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.3) + 0.35))
+    contrast(2) saturate(1.5);
+}
+
+.charHoloCard[data-char-texture="shiny-v"] .card__shine::before {
+  display: none;
+}
+
+.charHoloCard[data-char-texture="shiny-v"] .card__shine::after {
+  background-position:
+    center center,
+    0% var(--char-background-y),
+    calc((var(--char-background-x) + (var(--char-background-y) * 0.2)) * -1)
+      calc(var(--char-background-y) * -1),
+    var(--char-background-x) var(--char-background-y);
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.5) + 0.8))
+    contrast(1.6) saturate(1.4);
+}
+
+.charHoloCard[data-char-texture="shiny-v"] .card__glare {
+  opacity: calc(var(--char-effect-opacity) * 0.72);
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsla(0, 0%, 100%, 0.55) calc(3% + 3% * var(--char-effect-scale, 1)),
+    hsla(0, 0%, 100%, 0.22) calc(15% + 15% * var(--char-effect-scale, 1)),
+    hsla(0, 0%, 0%, 0.5) 85%
+  );
+  mix-blend-mode: overlay;
+  filter: brightness(calc(0.65 + 0.35 * var(--char-effect-scale, 1))) contrast(1.15);
+}
+
+/* --- trainer-full-art · 波纹钢印（sunpillar 基底 + 梦幻虹彩覆写）--- */
+.charHoloCard[data-char-texture="trainer-full-art"] .card__shine {
+  --char-foil-layer: var(--char-foil-trainer);
+  --char-imgsize: 20%;
+
+  background-blend-mode: color-burn, hue, hard-light;
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.05) + 0.6))
+    contrast(1.5) saturate(1.2);
+}
+
+.charHoloCard[data-char-texture="trainer-full-art"] .card__shine::after {
+  filter: brightness(calc((var(--char-pointer-from-center) * 0.4) + 0.85))
+    contrast(2) saturate(0.5);
+}
+
+.charHoloCard[data-char-texture="trainer-full-art"] .card__shine::before {
+  background-image: radial-gradient(
+    farthest-corner circle at var(--char-pointer-x) var(--char-pointer-y),
+    hsl(0, 0%, 100%) 0%,
+    hsla(0, 0%, 0%, 0) 80%
+  );
+  mix-blend-mode: screen;
+  opacity: 0.5;
+}
+
+.charHoloCard[data-char-texture="trainer-full-art"] .card__glare {
+  opacity: calc(var(--char-effect-opacity) * 0.75);
+  mix-blend-mode: multiply;
+  filter: brightness(1.5) contrast(1.4) saturate(1);
+  background-size: 170% 170%;
+}
+
+@media screen and (max-width: 900px) {
+  .charHoloCard[data-char-texture="holo"] .card__shine {
+    --char-scanlines-space: 0.5px;
+  }
+}

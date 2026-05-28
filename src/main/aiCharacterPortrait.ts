@@ -23,7 +23,7 @@ import {
 /** 与「文生图接口」报错区分，便于侧栏立绘生成排障 */
 const PORTRAIT_TRANSLATE_ERR_PREFIX = "提示词译英（对话模型）";
 
-function formatPortraitTranslateError(detail: string): string {
+export function formatPortraitTranslateError(detail: string): string {
   const d = (detail || "未知错误").trim();
   if (!d || d === "已停止") return d;
   if (d.startsWith(PORTRAIT_TRANSLATE_ERR_PREFIX)) return d;
@@ -43,7 +43,7 @@ function formatTxt2ImgStepError(detail: string): string {
   ) {
     return d;
   }
-  return `文生图接口：${d}`;
+  return `文生图接口（${d}）`;
 }
 
 function portraitSearchQueries(characterName: string): string[] {
@@ -292,7 +292,7 @@ async function callPortraitLlm(opts: {
 }): Promise<PortraitExtractResult> {
   const { chat, characterName, retrievalContext, hits, signal } = opts;
 
-  const system = `你是中文小说角色外貌分析与 Stable Diffusion 提示词助手。
+  const system = `你是中文小说角色外貌分析与插画描述助手。
 你必须只依据用户给出的「检索片段」总结外貌；不得编造书中未出现的细节。
 若文本依据不足，须在 confidence_note 中说明哪些是推断、哪些缺乏原文。
 输出必须是单一 JSON 对象，不要 Markdown、不要代码围栏，键如下：
@@ -309,8 +309,8 @@ async function callPortraitLlm(opts: {
   "relations_zh": string
 }
 excerpts 每条 quote 为原文节选（可稍缩短）；chapterIndex 从 0 起。
-sd_prompt_zh：中文画面描述，逗号或顿号分隔的短语即可（面向读者与编辑，勿写英文 tag）；面向 SD 1.x 的语义即可。
-negative_zh：中文负面描述，同上；不需要负面时填空字符串。
+sd_prompt_zh：角色形象的中文自然语言描述（短语或短句，逗号或顿号分隔即可；面向读者编辑，勿写英文 tag）；用于后续文生图，可含外貌、服饰、姿态、光线等。
+negative_zh：可选；一般填空字符串（通用排除项由应用设置提供）。
 gender：依据原文能确定的生理性别；无法判断时用 unknown。
 age_text：具体年龄数字或「少年」「中年」等描述；无任何依据时填空字符串。
 identity_zh：故事中的组织归属、职业或社会地位；无依据时填空字符串。
@@ -721,69 +721,29 @@ export async function runCharacterPortraitExtract(
   }
 }
 
-function sdFieldContainsCjk(s: string): boolean {
-  return /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/.test(s);
-}
-
 export type Txt2ImgToPathArgs = {
   txt2img: AITxt2ImgConfig;
   prompt: string;
   negativePrompt: string;
   outputPathAbsolute: string;
-  aiForTranslate?: AIConfig;
-  /** 中止时中断译英、文生图 fetch 与 ComfyUI 轮询 */
+  /** 中止时中断文生图 fetch 与云端/ComfyUI 轮询 */
   signal?: AbortSignal;
 };
 
-/** 文生图并直接写入绝对路径（无另存为对话框） */
+/** 文生图并直接写入绝对路径（prompt 已由 adaptPortraitPromptForBackend 适配） */
 export async function runTxt2ImgToAbsolutePath(
   opts: Txt2ImgToPathArgs,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const {
-    txt2img,
-    prompt,
-    negativePrompt,
-    outputPathAbsolute,
-    aiForTranslate,
-    signal,
-  } = opts;
+  const { txt2img, prompt, negativePrompt, outputPathAbsolute, signal } = opts;
   if (!txt2img.enabled) {
     return {
       ok: false,
-      error: "请先在设置 → 文生图中启用功能并填写 API 地址。",
+      error: "请先在设置 → 角色卡中启用文生图。",
     };
   }
   const out = path.resolve(outputPathAbsolute.trim());
   if (!path.isAbsolute(out)) {
     return { ok: false, error: "输出路径须为绝对路径" };
-  }
-
-  let neg = negativePrompt.trim();
-  if (neg && sdFieldContainsCjk(neg)) {
-    if (!aiForTranslate) {
-      return {
-        ok: false,
-        error:
-          "负面提示词含中文等非拉丁字符时，需要完整 AI 配置以译英；请检查应用配置。",
-      };
-    }
-    const tr = await runPortraitPromptZhToEn(aiForTranslate, {
-      styleZh: "",
-      promptZh: "",
-      negativeZh: neg,
-      signal,
-    });
-    if ("error" in tr) {
-      if (signal?.aborted) return { ok: false, error: "已停止" };
-      return { ok: false, error: formatPortraitTranslateError(tr.error) };
-    }
-    neg = tr.negative_en.trim();
-    if (!neg) {
-      return {
-        ok: false,
-        error: "负面提示词译英结果为空，请检查对话模型或改写负面词。",
-      };
-    }
   }
 
   if (signal?.aborted) {
@@ -793,7 +753,7 @@ export async function runTxt2ImgToAbsolutePath(
   const img = await fetchTxt2ImgImageBuffer(
     txt2img,
     prompt.trim(),
-    neg,
+    negativePrompt.trim(),
     signal,
   );
   if (!img.ok) {

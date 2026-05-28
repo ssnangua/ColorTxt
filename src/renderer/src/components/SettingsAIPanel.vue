@@ -10,13 +10,14 @@ import {
 } from "@shared/apiEndpointPresets";
 import AppCustomSelect, { type CustomSelectItem } from "./AppCustomSelect.vue";
 import ApiEndpointInput from "./ApiEndpointInput.vue";
+import AppConnectionTestButton from "./AppConnectionTestButton.vue";
+import type { ConnectionTestResult } from "../composables/useConnectionTest";
 import AppPullFlashButton, { type AppPullFlashDone } from "./AppPullFlashButton.vue";
 import NumericInput from "./NumericInput.vue";
 import RangeSlider from "./RangeSlider.vue";
 import PathPickerInput from "./PathPickerInput.vue";
 import SwitchToggle from "./SwitchToggle.vue";
 import { icons } from "../icons";
-import { appAlert } from "../services/appDialog";
 import { resolveDefaultAiDataCacheDirSync } from "../utils/defaultCacheDirs";
 import { useSecretStorageHint } from "../composables/useSecretStorageHint";
 
@@ -31,15 +32,10 @@ const aiDataCacheDirPlaceholder = computed(() => {
 
 const selectListsEmpty: CustomSelectItem[] = [];
 
-type AiTestPhase = "idle" | "pending" | "ok" | "fail";
-
 const showChatKey = ref(false);
 const chatModelsLoading = ref(false);
 const chatPullBtnRef = ref<InstanceType<typeof AppPullFlashButton> | null>(null);
-const chatTestPhase = ref<AiTestPhase>("idle");
 const chatModelOptions = ref<string[]>([]);
-
-const chatLastResolvedFingerprint = ref<string | null>(null);
 
 const chatEndpointFingerprint = computed(() => {
   const c = modelValue.value.chat;
@@ -106,15 +102,6 @@ watch(
   { immediate: true },
 );
 
-watch(chatEndpointFingerprint, (fp) => {
-  if (chatTestPhase.value === "pending") return;
-  if (chatLastResolvedFingerprint.value === null) return;
-  if (fp !== chatLastResolvedFingerprint.value) {
-    chatTestPhase.value = "idle";
-    chatLastResolvedFingerprint.value = null;
-  }
-});
-
 const chatModelScrollItems = computed((): CustomSelectItem[] =>
   chatModelOptions.value.map((m) => ({
     kind: "item",
@@ -126,19 +113,6 @@ const chatModelScrollItems = computed((): CustomSelectItem[] =>
 const chatModelDisplayLabel = computed(() =>
   modelValue.value.chat.model.trim(),
 );
-
-const chatTestIconHtml = computed(() => {
-  switch (chatTestPhase.value) {
-    case "pending":
-      return icons.refresh;
-    case "ok":
-      return icons.success;
-    case "fail":
-      return icons.fail;
-    default:
-      return icons.unknow;
-  }
-});
 
 async function refreshChatModels(opts?: { pullDone?: AppPullFlashDone }) {
   const pullDone = opts?.pullDone;
@@ -205,39 +179,14 @@ function moveQuickQuestionDown(i: number) {
   q.splice(i + 1, 0, row);
 }
 
-async function testChat() {
-  if (chatTestPhase.value === "pending") return;
-  chatTestPhase.value = "pending";
-  const fpWhenStarted = chatEndpointFingerprint.value;
-  try {
-    const r = await window.colorTxt.ai.testChat({
-      baseUrl: modelValue.value.chat.baseUrl,
-      apiKey: modelValue.value.chat.apiKey,
-      model: modelValue.value.chat.model,
-    });
-    if (chatEndpointFingerprint.value !== fpWhenStarted) {
-      chatTestPhase.value = "idle";
-      chatLastResolvedFingerprint.value = null;
-      return;
-    }
-    if (r.ok) {
-      chatTestPhase.value = "ok";
-      chatLastResolvedFingerprint.value = fpWhenStarted;
-    } else {
-      await appAlert(r.error);
-      chatTestPhase.value = "fail";
-      chatLastResolvedFingerprint.value = fpWhenStarted;
-    }
-  } catch (e) {
-    if (chatEndpointFingerprint.value !== fpWhenStarted) {
-      chatTestPhase.value = "idle";
-      chatLastResolvedFingerprint.value = null;
-      return;
-    }
-    await appAlert(e instanceof Error ? e.message : String(e));
-    chatTestPhase.value = "fail";
-    chatLastResolvedFingerprint.value = fpWhenStarted;
-  }
+async function runChatConnectionTest(): Promise<ConnectionTestResult> {
+  const r = await window.colorTxt.ai.testChat({
+    baseUrl: modelValue.value.chat.baseUrl,
+    apiKey: modelValue.value.chat.apiKey,
+    model: modelValue.value.chat.model,
+  });
+  if (r.ok) return { ok: true };
+  return { ok: false, error: r.error };
 }
 
 </script>
@@ -339,23 +288,10 @@ async function testChat() {
                   :busy="chatModelsLoading"
                   @pull="(done) => void refreshChatModels({ pullDone: done })"
                 />
-                <button
-                  type="button"
-                  class="btn"
-                  :class="{
-                    success: chatTestPhase === 'ok',
-                    danger: chatTestPhase === 'fail',
-                  }"
-                  :disabled="chatTestPhase === 'pending'"
-                  @click="testChat"
-                >
-                  <span
-                    class="iconSvg"
-                    :class="{ 'iconSvg--spinning': chatTestPhase === 'pending' }"
-                    v-html="chatTestIconHtml"
-                  />
-                  测试连接
-                </button>
+                <AppConnectionTestButton
+                  :fingerprint="chatEndpointFingerprint"
+                  :on-test="runChatConnectionTest"
+                />
               </div>
             </div>
           </div>
@@ -735,16 +671,6 @@ async function testChat() {
 
   path {
     fill: currentColor;
-  }
-}
-
-.iconSvg.iconSvg--spinning :deep(svg) {
-  animation: aiSettingsIconSpin 0.65s linear infinite;
-}
-
-@keyframes aiSettingsIconSpin {
-  to {
-    transform: rotate(360deg);
   }
 }
 

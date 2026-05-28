@@ -1,3 +1,13 @@
+/** 阿里云百炼 / DashScope 平台统一品牌名（对话、语音朗读等） */
+export const DASHSCOPE_PLATFORM_LABEL = "阿里云通义（DashScope）";
+
+/** 通义万相文生图服务商显示名 */
+export const DASHSCOPE_WANX_PLATFORM_LABEL = "阿里云通义万相（DashScope）";
+
+/** 百炼控制台 API 密钥页 */
+export const DASHSCOPE_API_KEY_CONSOLE_URL =
+  "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/api-key";
+
 /** 对话 API 推荐服务商（OpenAI 兼容 /chat/completions） */
 export type ChatApiProviderPreset = {
   id: string;
@@ -45,7 +55,7 @@ const CHAT_API_PROVIDER_KNOWN_PRESETS: readonly ChatApiProviderPreset[] = [
   },
   {
     id: "dashscope",
-    label: "阿里云通义（DashScope）",
+    label: DASHSCOPE_PLATFORM_LABEL,
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     deepThinkingAdapted: true,
   },
@@ -139,26 +149,58 @@ export function openAiCompatEmbeddingsUrl(baseUrl: string): string {
 }
 
 /** 文生图后端类型（与 `AITxt2ImgConfig.backend` 一致） */
-export type Txt2ImgBackendPresetId = "a1111" | "comfyui";
+export type Txt2ImgBackendPresetId =
+  | "a1111"
+  | "comfyui"
+  | "openai_images"
+  | "dashscope_wanx"
+  | "stability"
+  | "openai_compat_images";
 
 export type Txt2ImgBackendPreset = {
   id: Txt2ImgBackendPresetId;
-  /** 接口类型显示名（下拉第一行） */
+  /** 服务商显示名（下拉第一行） */
   label: string;
   /** 默认接口 Base URL（选中后写入配置；不含路径） */
   baseUrl: string;
+  /** 下拉第二行说明（`custom` 等无固定地址时使用） */
+  listDescription?: string;
+  /** 选中后清空接口地址，由用户手动填写 */
+  custom?: boolean;
 };
 
 export const TXT2IMG_BACKEND_PRESETS: readonly Txt2ImgBackendPreset[] = [
   {
     id: "a1111",
-    label: "AUTOMATIC1111 WebUI（txt2img）",
+    label: "本地 WebUI",
     baseUrl: "http://127.0.0.1:7860",
   },
   {
     id: "comfyui",
-    label: "ComfyUI（HTTP 队列）",
+    label: "本地 ComfyUI",
     baseUrl: "http://127.0.0.1:8188",
+  },
+  {
+    id: "openai_images",
+    label: "OpenAI Images",
+    baseUrl: "https://api.openai.com/v1",
+  },
+  {
+    id: "dashscope_wanx",
+    label: DASHSCOPE_WANX_PLATFORM_LABEL,
+    baseUrl: "https://dashscope.aliyuncs.com",
+  },
+  {
+    id: "stability",
+    label: "Stability AI",
+    baseUrl: "https://api.stability.ai",
+  },
+  {
+    id: "openai_compat_images",
+    label: "自定义 OpenAI 兼容服务",
+    baseUrl: "",
+    listDescription: "手动输入接口地址",
+    custom: true,
   },
 ];
 

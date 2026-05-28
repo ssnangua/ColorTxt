@@ -1264,7 +1264,7 @@ export class VoiceReadLinePlayer {
     }
 
     const numSamples = Math.floor(pcm.length / 2);
-    if (numSamples === 0) throw new Error("DashScope 音频数据无效");
+    if (numSamples === 0) throw new Error("通义语音合成返回的音频数据无效");
 
     const ctx = this.dashAudioCtx;
     const audioBuffer = ctx.createBuffer(1, numSamples, sampleRate);
@@ -1308,7 +1308,9 @@ export class VoiceReadLinePlayer {
   ): Promise<Uint8Array> {
     const key = settings.dashscopeApiKey.trim();
     if (!key) {
-      throw new Error("请先在「语音朗读」设置中填写 DashScope API Key");
+      throw new Error(
+        "请先在「语音朗读」设置中填写阿里云通义（DashScope）API 密钥",
+      );
     }
     const voice = settings.voiceId.trim() || "Cherry";
 
@@ -1329,7 +1331,7 @@ export class VoiceReadLinePlayer {
       },
     );
     if (!resp.ok) {
-      throw new Error(`DashScope TTS HTTP ${resp.status}`);
+      throw new Error(`通义语音合成 HTTP ${resp.status}`);
     }
     const reader = resp.body?.getReader();
     if (!reader) throw new Error("无响应体");
@@ -1369,7 +1371,7 @@ export class VoiceReadLinePlayer {
 
     const totalLen = chunks.reduce((s, c) => s + c.length, 0);
     if (totalLen === 0) {
-      throw new Error("DashScope 未返回音频数据");
+      throw new Error("通义语音合成未返回音频数据");
     }
     const merged = new Uint8Array(totalLen);
     let off = 0;

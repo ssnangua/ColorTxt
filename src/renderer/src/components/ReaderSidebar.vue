@@ -1,12 +1,5 @@
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { Chapter } from "../chapter";
 import { useReaderSidebarLists } from "../composables/useReaderSidebarLists";
 import type {
@@ -22,7 +15,9 @@ import type {
   CharacterBookStylePersisted,
   CharacterRosterEntry,
 } from "@shared/characterTypes";
+import AppShellMenuTeleport from "./AppShellMenuTeleport.vue";
 import SwitchToggle from "./SwitchToggle.vue";
+import { useAnchoredAppShellMenu } from "../composables/useAnchoredAppShellMenu";
 import ChapterListPanel from "./ChapterListPanel.vue";
 import FileListPanel from "./FileListPanel.vue";
 import BookmarkListPanel from "./BookmarkListPanel.vue";
@@ -38,6 +33,11 @@ import {
   characterPortraitBookDirAbs,
   sanitizeBookFolderSegment,
 } from "@shared/characterPortraitPaths";
+import {
+  CHARACTER_CARD_TEXTURE_EFFECTS,
+  DEFAULT_CHARACTER_CARD_TEXTURE_EFFECT,
+  type CharacterCardTextureEffectId,
+} from "@shared/characterCardTextureEffects";
 import { appAlert } from "../services/appDialog";
 import {
   collectFsPathsFromDataTransfer,
@@ -112,6 +112,8 @@ const props = withDefaults(
     characterPortraitTabVisible?: boolean;
     /** 设置 → 文生图：角色立绘缓存根目录（空则默认 userData 子目录） */
     characterPortraitCacheDir?: string;
+    /** 角色卡纹理/全息效果（全局，存 colorTxt.ui.settings） */
+    characterCardTextureEffect?: CharacterCardTextureEffectId;
     /** 当前文件的侧栏角色列表（来自 file.meta） */
     characterRoster?: readonly CharacterRosterEntry[];
     /** 当前文件本书画风（来自 file.meta） */
@@ -151,6 +153,7 @@ const props = withDefaults(
     aiCustomSkills: () => [],
     characterPortraitTabVisible: true,
     characterPortraitCacheDir: "",
+    characterCardTextureEffect: DEFAULT_CHARACTER_CARD_TEXTURE_EFFECT,
     characterRoster: () => [],
     characterBookStyle: undefined,
     aiAssistantConfigSyncNonce: 0,
@@ -164,6 +167,10 @@ const deepThinking = defineModel<boolean>("deepThinking", {
 const spoilerSafe = defineModel<boolean>("spoilerSafe", {
   default: false,
 });
+const characterCardTextureEffect = defineModel<CharacterCardTextureEffectId>(
+  "characterCardTextureEffect",
+  { default: DEFAULT_CHARACTER_CARD_TEXTURE_EFFECT },
+);
 
 const emit = defineEmits<{
   "update:activeTab": [value: ReaderSidebarTab];
@@ -200,6 +207,8 @@ const emit = defineEmits<{
   "update:fullscreenFileListPopoversOpen": [open: boolean];
   "update:fullscreenAiAssistantPopoversOpen": [open: boolean];
   "update:fullscreenCharacterDrawerOpen": [open: boolean];
+  "update:fullscreenCharacterPopoversOpen": [open: boolean];
+  "update:characterCardTextureEffect": [value: CharacterCardTextureEffectId];
   "update:fileListEditing": [editing: boolean];
   requestExpandPanel: [];
   requestCollapsePanel: [];
@@ -256,6 +265,7 @@ const characterPortraitOpenDirDisabled = computed(() => {
 });
 
 async function onOpenCharacterPortraitBookDir() {
+  closeCharacterMoreMenu();
   const sp =
     props.currentFilePath?.trim() || props.physicalReaderPath?.trim() || "";
   const rootRaw = props.characterPortraitCacheDir?.trim() ?? "";
@@ -268,6 +278,121 @@ async function onOpenCharacterPortraitBookDir() {
   if (!r.ok) {
     void appAlert(r.error || "无法打开文件夹");
   }
+}
+
+/** 侧栏「角色卡」标题行「更多」菜单 */
+const CHARACTER_HEADER_MORE_MENU_W = 168;
+const CHARACTER_TEXTURE_FLYOUT_MIN_W = 168;
+const characterHeaderMoreBtnRef = ref<HTMLButtonElement | null>(null);
+const characterTextureSubTriggerRef = ref<HTMLElement | null>(null);
+const characterTextureSubOpen = ref(false);
+let characterTextureSubCloseTimer: ReturnType<typeof setTimeout> | null = null;
+const characterCardZoomOpen = ref(false);
+
+const characterHeaderMoreDisabled = computed(
+  () => !props.characterPortraitTabVisible,
+);
+
+const characterTextureFlyoutMenu = useAnchoredAppShellMenu({
+  open: characterTextureSubOpen,
+  anchor: characterTextureSubTriggerRef,
+  placement: "beside-right",
+  widthPx: CHARACTER_TEXTURE_FLYOUT_MIN_W,
+  enableDismiss: false,
+  zIndex: 7201,
+  panelMaxHeight: 320,
+});
+const {
+  left: characterTextureFlyoutLeft,
+  top: characterTextureFlyoutTop,
+  panelRef: characterTextureFlyoutPanelRef,
+  reposition: repositionCharacterTextureFlyout,
+} = characterTextureFlyoutMenu;
+
+const characterMoreMenu = useAnchoredAppShellMenu({
+  anchor: characterHeaderMoreBtnRef,
+  placement: "below-end",
+  widthPx: CHARACTER_HEADER_MORE_MENU_W,
+  disabled: characterHeaderMoreDisabled,
+  excludeCloseWithin: computed(() => [
+    characterTextureFlyoutPanelRef.value,
+  ]),
+  onClose: () => {
+    characterTextureSubOpen.value = false;
+  },
+});
+const {
+  open: characterHeaderMoreOpen,
+  left: characterHeaderMoreLeft,
+  top: characterHeaderMoreTop,
+  panelRef: characterHeaderMorePanelRef,
+  toggleMenu: toggleCharacterHeaderMoreMenu,
+  closeMenu: closeCharacterMoreMenu,
+} = characterMoreMenu;
+
+watch(
+  () => characterHeaderMoreOpen.value || characterCardZoomOpen.value,
+  (v) => {
+    emit("update:fullscreenCharacterPopoversOpen", v);
+  },
+  { immediate: true },
+);
+
+function clearCharacterTextureSubCloseTimer() {
+  if (characterTextureSubCloseTimer) {
+    clearTimeout(characterTextureSubCloseTimer);
+    characterTextureSubCloseTimer = null;
+  }
+}
+
+async function openCharacterTextureSub() {
+  clearCharacterTextureSubCloseTimer();
+  characterTextureSubOpen.value = true;
+  await repositionCharacterTextureFlyout();
+}
+
+function isNodeWithinCharacterTextureSubHoverZone(node: Node | null) {
+  if (!node) return false;
+  if (characterTextureSubTriggerRef.value?.contains(node)) return true;
+  if (characterTextureFlyoutPanelRef.value?.contains(node)) return true;
+  return false;
+}
+
+function onCharacterTextureSubTriggerLeave(ev: MouseEvent) {
+  const next = ev.relatedTarget as Node | null;
+  if (isNodeWithinCharacterTextureSubHoverZone(next)) return;
+  scheduleCloseCharacterTextureSub();
+}
+
+function onCharacterTextureFlyoutLeave(ev: MouseEvent) {
+  const next = ev.relatedTarget as Node | null;
+  if (isNodeWithinCharacterTextureSubHoverZone(next)) return;
+  scheduleCloseCharacterTextureSub();
+}
+
+function scheduleCloseCharacterTextureSub() {
+  clearCharacterTextureSubCloseTimer();
+  characterTextureSubCloseTimer = setTimeout(() => {
+    characterTextureSubOpen.value = false;
+    characterTextureSubCloseTimer = null;
+  }, 200);
+}
+
+function onCharacterTexturePicked(id: CharacterCardTextureEffectId) {
+  characterCardTextureEffect.value = id;
+  closeCharacterMoreMenu();
+}
+
+function bindAiAssistantHeaderMorePanel(el: HTMLElement | null) {
+  aiAssistantHeaderMorePanelRef.value = el;
+}
+
+function bindCharacterHeaderMorePanel(el: HTMLElement | null) {
+  characterHeaderMorePanelRef.value = el;
+}
+
+function bindCharacterTextureFlyoutPanel(el: HTMLElement | null) {
+  characterTextureFlyoutPanelRef.value = el;
 }
 
 const activePanelTitle = computed(() => {
@@ -296,13 +421,28 @@ const AI_ASSISTANT_HEADER_MORE_MENU_W = 150;
 const aiAssistantPanelRef = ref<{
   requestRebuildVectorIndex: () => Promise<void>;
 } | null>(null);
-const aiAssistantHeaderMoreOpen = ref(false);
 const aiAssistantHeaderMoreBtnRef = ref<HTMLButtonElement | null>(null);
-const aiAssistantHeaderMoreMenuRef = ref<HTMLElement | null>(null);
-const aiAssistantHeaderMoreLeft = ref(0);
-const aiAssistantHeaderMoreTop = ref(0);
 
 const aiAssistantPanelTeleportPopoversOpen = ref(false);
+
+const aiAssistantHeaderMoreDisabled = computed(
+  () => !props.aiAssistantTabVisible || !props.currentFilePath?.trim(),
+);
+
+const aiMoreMenu = useAnchoredAppShellMenu({
+  anchor: aiAssistantHeaderMoreBtnRef,
+  placement: "below-end",
+  widthPx: AI_ASSISTANT_HEADER_MORE_MENU_W,
+  disabled: aiAssistantHeaderMoreDisabled,
+});
+const {
+  open: aiAssistantHeaderMoreOpen,
+  left: aiAssistantHeaderMoreLeft,
+  top: aiAssistantHeaderMoreTop,
+  panelRef: aiAssistantHeaderMorePanelRef,
+  toggleMenu: toggleAiAssistantHeaderMoreMenu,
+  closeMenu: closeAiAssistantHeaderMoreMenu,
+} = aiMoreMenu;
 
 watch(
   () =>
@@ -314,85 +454,22 @@ watch(
   { immediate: true },
 );
 
-const aiAssistantHeaderMoreDisabled = computed(
-  () => !props.aiAssistantTabVisible || !props.currentFilePath?.trim(),
-);
-
-async function positionAiAssistantHeaderMoreMenu() {
-  const trig = aiAssistantHeaderMoreBtnRef.value;
-  if (!trig) return;
-  const r = trig.getBoundingClientRect();
-  aiAssistantHeaderMoreLeft.value = r.right - AI_ASSISTANT_HEADER_MORE_MENU_W;
-  aiAssistantHeaderMoreTop.value = r.bottom + 4;
-  await nextTick();
-  const panel = aiAssistantHeaderMoreMenuRef.value;
-  if (!panel) return;
-  const margin = 8;
-  const w = panel.offsetWidth;
-  const h = panel.offsetHeight;
-  const maxX = Math.max(margin, window.innerWidth - w - margin);
-  const maxY = Math.max(margin, window.innerHeight - h - margin);
-  aiAssistantHeaderMoreLeft.value = Math.min(
-    Math.max(margin, aiAssistantHeaderMoreLeft.value),
-    maxX,
-  );
-  aiAssistantHeaderMoreTop.value = Math.min(
-    Math.max(margin, aiAssistantHeaderMoreTop.value),
-    maxY,
-  );
-}
-
-async function toggleAiAssistantHeaderMoreMenu() {
-  if (aiAssistantHeaderMoreDisabled.value) return;
-  aiAssistantHeaderMoreOpen.value = !aiAssistantHeaderMoreOpen.value;
-  if (aiAssistantHeaderMoreOpen.value) {
-    await nextTick();
-    await positionAiAssistantHeaderMoreMenu();
-  }
-}
-
 async function onAiAssistantHeaderMoreRebuildIndex() {
-  aiAssistantHeaderMoreOpen.value = false;
+  closeAiAssistantHeaderMoreMenu();
   await nextTick();
   await aiAssistantPanelRef.value?.requestRebuildVectorIndex?.();
-}
-
-function onDocPointerDownAiAssistantMore(ev: PointerEvent) {
-  if (!aiAssistantHeaderMoreOpen.value) return;
-  const t = ev.target as Node | null;
-  if (t && aiAssistantHeaderMoreMenuRef.value?.contains(t)) return;
-  if (t && aiAssistantHeaderMoreBtnRef.value?.contains(t)) return;
-  aiAssistantHeaderMoreOpen.value = false;
-}
-
-function onDocKeydownAiAssistantMore(ev: KeyboardEvent) {
-  if (ev.key !== "Escape") return;
-  if (!aiAssistantHeaderMoreOpen.value) return;
-  ev.preventDefault();
-  aiAssistantHeaderMoreOpen.value = false;
-}
-
-function onWindowResizeAiAssistantMore() {
-  if (aiAssistantHeaderMoreOpen.value) void positionAiAssistantHeaderMoreMenu();
 }
 
 watch(
   () => props.activeTab,
   () => {
-    aiAssistantHeaderMoreOpen.value = false;
+    closeAiAssistantHeaderMoreMenu();
+    closeCharacterMoreMenu();
   },
 );
 
-onMounted(() => {
-  document.addEventListener("pointerdown", onDocPointerDownAiAssistantMore);
-  document.addEventListener("keydown", onDocKeydownAiAssistantMore, true);
-  window.addEventListener("resize", onWindowResizeAiAssistantMore);
-});
-
 onBeforeUnmount(() => {
-  document.removeEventListener("pointerdown", onDocPointerDownAiAssistantMore);
-  document.removeEventListener("keydown", onDocKeydownAiAssistantMore, true);
-  window.removeEventListener("resize", onWindowResizeAiAssistantMore);
+  clearCharacterTextureSubCloseTimer();
 });
 
 const bookmarkTabIconHtml = computed(() => {
@@ -617,16 +694,21 @@ defineExpose({
             @update:model-value="emit('update:showChapterCounts', $event)"
           />
         </div>
-        <button
-          v-else-if="activeTab === 'character'"
-          type="button"
-          class="btn"
-          :disabled="characterPortraitOpenDirDisabled"
-          aria-label="打开立绘目录"
-          @click="onOpenCharacterPortraitBookDir"
-        >
-          打开立绘目录
-        </button>
+        <div v-else-if="activeTab === 'character'" class="sidebarHeaderEnd">
+          <button
+            ref="characterHeaderMoreBtnRef"
+            type="button"
+            class="aiReaderSidebarHeaderIconBtn"
+            title="更多"
+            aria-label="更多"
+            aria-haspopup="menu"
+            :aria-expanded="characterHeaderMoreOpen"
+            :disabled="characterHeaderMoreDisabled"
+            @click="toggleCharacterHeaderMoreMenu"
+          >
+            <span class="svg" v-html="icons.more" />
+          </button>
+        </div>
         <div v-else-if="activeTab === 'aiAssistant'" class="sidebarHeaderEnd">
           <button
             ref="aiAssistantHeaderMoreBtnRef"
@@ -744,11 +826,16 @@ defineExpose({
           :panel-visible="activeTab === 'character'"
           v-model:spoiler-safe="spoilerSafe"
           :character-portrait-cache-dir="characterPortraitCacheDir"
+          :character-card-texture-effect="characterCardTextureEffect"
           :character-roster="characterRoster"
           :character-book-style="characterBookStyle"
+          :ai-config-sync-nonce="aiAssistantConfigSyncNonce"
           @character-file-meta-patch="emit('characterFileMetaPatch', $event)"
           @update:fullscreen-character-drawer-open="
             emit('update:fullscreenCharacterDrawerOpen', $event)
+          "
+          @update:fullscreen-character-card-zoom-open="
+            characterCardZoomOpen = $event
           "
         />
       </div>
@@ -779,31 +866,100 @@ defineExpose({
         <p class="sidebarDropOverlayText">添加文件</p>
       </div>
     </Transition>
-    <Teleport to="body">
+    <AppShellMenuTeleport
+      v-model:open="aiAssistantHeaderMoreOpen"
+      :left="aiAssistantHeaderMoreLeft"
+      :top="aiAssistantHeaderMoreTop"
+      :width="AI_ASSISTANT_HEADER_MORE_MENU_W"
+      :on-panel-mount="bindAiAssistantHeaderMorePanel"
+      aria-label="AI 阅读助手更多"
+    >
+      <button
+        type="button"
+        class="appShellMenuItem"
+        role="menuitem"
+        @click="onAiAssistantHeaderMoreRebuildIndex"
+      >
+        重建向量索引
+      </button>
+    </AppShellMenuTeleport>
+    <AppShellMenuTeleport
+      v-model:open="characterHeaderMoreOpen"
+      :left="characterHeaderMoreLeft"
+      :top="characterHeaderMoreTop"
+      :width="CHARACTER_HEADER_MORE_MENU_W"
+      :on-panel-mount="bindCharacterHeaderMorePanel"
+      aria-label="角色卡更多"
+    >
       <div
-        v-if="aiAssistantHeaderMoreOpen"
-        ref="aiAssistantHeaderMoreMenuRef"
-        class="sidebarAiHeaderMoreMenu appShellMenuPanel"
-        data-fullscreen-sidebar-float
-        role="menu"
-        aria-label="AI 阅读助手更多"
-        :style="{
-          left: `${aiAssistantHeaderMoreLeft}px`,
-          top: `${aiAssistantHeaderMoreTop}px`,
-          width: `${AI_ASSISTANT_HEADER_MORE_MENU_W}px`,
-        }"
-        @click.stop
+        ref="characterTextureSubTriggerRef"
+        class="appShellMenuSubWrap"
+        @mouseenter="openCharacterTextureSub"
+        @mouseleave="onCharacterTextureSubTriggerLeave"
       >
         <button
           type="button"
           class="appShellMenuItem"
           role="menuitem"
-          @click="onAiAssistantHeaderMoreRebuildIndex"
+          aria-haspopup="menu"
+          :aria-expanded="characterTextureSubOpen"
         >
-          重建向量索引
+          <span class="appShellMenuLabel">卡片效果</span>
+          <span class="appShellMenuSubChevron">›</span>
         </button>
       </div>
-    </Teleport>
+      <div class="appShellMenuDivider" role="separator" />
+      <button
+        type="button"
+        class="appShellMenuItem"
+        role="menuitem"
+        :disabled="characterPortraitOpenDirDisabled"
+        @click="onOpenCharacterPortraitBookDir"
+      >
+        打开立绘目录
+      </button>
+    </AppShellMenuTeleport>
+    <AppShellMenuTeleport
+      v-if="characterHeaderMoreOpen"
+      v-model:open="characterTextureSubOpen"
+      :left="characterTextureFlyoutLeft"
+      :top="characterTextureFlyoutTop"
+      :z-index="7201"
+      :min-width="CHARACTER_TEXTURE_FLYOUT_MIN_W"
+      :max-height="320"
+      :on-panel-mount="bindCharacterTextureFlyoutPanel"
+      aria-label="卡片效果"
+      @mouseenter="openCharacterTextureSub"
+      @mouseleave="onCharacterTextureFlyoutLeave"
+    >
+      <div class="appShellMenuFlyoutList">
+        <template
+          v-for="opt in CHARACTER_CARD_TEXTURE_EFFECTS"
+          :key="opt.id"
+        >
+          <div
+            v-if="opt.dividerBefore"
+            class="appShellMenuFlyoutDivider"
+            role="separator"
+          />
+          <button
+            type="button"
+            class="appShellMenuFlyoutItem"
+            :class="{ 'is-active': characterCardTextureEffect === opt.id }"
+            role="menuitemradio"
+            :aria-checked="characterCardTextureEffect === opt.id"
+            @click="onCharacterTexturePicked(opt.id)"
+          >
+            <span class="appShellMenuFlyoutLabel">{{ opt.labelZh }}</span>
+          </button>
+          <div
+            v-if="opt.id === 'off'"
+            class="appShellMenuFlyoutDivider"
+            role="separator"
+          />
+        </template>
+      </div>
+    </AppShellMenuTeleport>
   </aside>
 </template>
 
@@ -1032,15 +1188,6 @@ defineExpose({
 
 .aiReaderSidebarHeaderIconBtn .svg :deep(svg path) {
   fill: currentColor;
-}
-
-.sidebarAiHeaderMoreMenu {
-  position: fixed;
-  z-index: 7200;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
 }
 
 /** AI 顶栏关闭：与活动栏图标同系，缩至与侧栏标题行高度协调 */

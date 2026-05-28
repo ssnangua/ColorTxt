@@ -10,6 +10,8 @@ import {
   normalizeChatPresetBaseUrl,
 } from "./apiEndpointPresets";
 import type { AITokenUsageTotals } from "./aiTokenUsage";
+import { isTxt2ImgBackend } from "./txt2ImgBackend";
+import { normalizeTxt2ImgCloudQuality } from "./txt2ImgOpenAiQuality";
 
 export interface AIChatEndpoint {
   baseUrl: string;
@@ -81,15 +83,26 @@ export function activeEmbeddingModel(embedding: AIEmbeddingEndpoint): string {
 }
 
 /** 文生图 HTTP 后端种类 */
-export type AITxt2ImgBackend = "a1111" | "comfyui";
+export type AITxt2ImgBackend =
+  | "a1111"
+  | "comfyui"
+  | "openai_images"
+  | "dashscope_wanx"
+  | "stability"
+  | "openai_compat_images";
 
-/** Stable Diffusion WebUI（AUTOMATIC1111）txt2img HTTP API 配置 */
+/** 文生图 API 配置（本地 SD WebUI / ComfyUI 与云端图像服务） */
 export interface AITxt2ImgConfig {
   enabled: boolean;
-  /** a1111：WebUI txt2img；comfyui：队列 `/prompt` + 轮询 `/history` */
   backend: AITxt2ImgBackend;
-  /** 如 http://127.0.0.1:7860（A1111）或 http://127.0.0.1:8188（ComfyUI），不含路径 */
+  /** 接口 Base URL（不含路径）；云端可为空时由预设填入 */
   apiBaseUrl: string;
+  /** 云端 API 密钥（内存态；磁盘与 config.json 不落明文） */
+  apiKey: string;
+  /** 云端模型 id（如 gpt-image-2、wan2.6-t2i） */
+  cloudModel: string;
+  /** OpenAI Images 画质 id：`auto` | `high` | `medium` | `low`（设置页中文展示） */
+  cloudQuality: string;
   /**
    * ComfyUI「保存（API 格式）」工作流 JSON。
    * 在节点的文本/数值字段中可使用占位符（会被替换为合法 JSON 字符串片段）：
@@ -153,6 +166,9 @@ export const defaultTxt2ImgConfig: AITxt2ImgConfig = {
   enabled: true,
   backend: "a1111",
   apiBaseUrl: "http://127.0.0.1:7860",
+  apiKey: "",
+  cloudModel: "",
+  cloudQuality: "medium",
   comfyWorkflowJson: "",
   width: 512,
   height: 768,
@@ -177,8 +193,18 @@ export function normalizeTxt2ImgConfig(raw: unknown): AITxt2ImgConfig {
   if (!raw || typeof raw !== "object") return d;
   const o = raw as Record<string, unknown>;
   if (typeof o.enabled === "boolean") d.enabled = o.enabled;
-  if (o.backend === "a1111" || o.backend === "comfyui") d.backend = o.backend;
+  if (typeof o.backend === "string" && isTxt2ImgBackend(o.backend)) {
+    d.backend = o.backend;
+  }
   if (typeof o.apiBaseUrl === "string") d.apiBaseUrl = o.apiBaseUrl;
+  if (typeof o.apiKey === "string") d.apiKey = o.apiKey;
+  if (typeof o.cloudModel === "string") {
+    const m = o.cloudModel.trim();
+    d.cloudModel = m.length > 200 ? m.slice(0, 200) : m;
+  }
+  if (typeof o.cloudQuality === "string") {
+    d.cloudQuality = normalizeTxt2ImgCloudQuality(o.cloudQuality);
+  }
   if (typeof o.comfyWorkflowJson === "string") {
     const w = o.comfyWorkflowJson;
     d.comfyWorkflowJson = w.length > 400_000 ? w.slice(0, 400_000) : w;

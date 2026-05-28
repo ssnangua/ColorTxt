@@ -497,9 +497,18 @@ textarea:focus {
 }
 
 .appShellMenuDivider {
+  flex-shrink: 0;
   height: 1px;
   margin: 6px 4px;
   background: var(--border);
+}
+
+/* 与项同处 flex gap 容器时：去掉 divider 自带纵向 margin，并略收 gap 叠出的空隙 */
+.appShellMenuTeleport > .appShellMenuDivider,
+.appShellMenuFlyoutList > .appShellMenuFlyoutDivider,
+.fontMenuList > .fontMenuDivider {
+  margin-block: 2px;
+  margin-inline: 4px;
 }
 
 .appShellMenuItem {
@@ -801,6 +810,9 @@ textarea:focus {
 }
 
 .appShellMenuFlyoutList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   overflow: auto;
   min-height: 0;
   box-sizing: border-box;
@@ -810,6 +822,8 @@ textarea:focus {
 
 .appShellMenuFlyoutItem {
   width: 100%;
+  box-sizing: border-box;
+  min-height: 36px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -819,16 +833,19 @@ textarea:focus {
   background: transparent;
   color: var(--list-item-fg);
   font-size: 13px;
+  line-height: 1.2;
   text-align: left;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-.appShellMenuFlyoutItem:hover {
+.appShellMenuFlyoutItem:hover:not(:disabled, .is-active) {
   background: var(--list-item-bg-hover);
 }
 
-.appShellMenuFlyoutItem + .appShellMenuFlyoutItem {
-  margin-top: 1px;
+.appShellMenuFlyoutItem.is-active {
+  background: var(--list-item-bg-active);
+  color: var(--list-item-fg-active);
 }
 
 .appShellMenuFlyoutItem--rowBetween {
@@ -864,8 +881,9 @@ textarea:focus {
 }
 
 .appShellMenuFlyoutDivider {
+  flex-shrink: 0;
   height: 1px;
-  margin: 6px 4px;
+  margin: 4px 4px;
   background: var(--border);
 }
 

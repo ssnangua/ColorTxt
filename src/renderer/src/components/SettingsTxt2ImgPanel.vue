@@ -5,13 +5,38 @@ import {
   TXT2IMG_BACKEND_PRESETS,
   findTxt2ImgBackendPreset,
 } from "@shared/apiEndpointPresets";
+import {
+  TXT2IMG_DEFAULT_CLOUD_MODEL,
+  isTxt2ImgCloudBackend,
+  txt2ImgRequiresApiKey,
+} from "@shared/txt2ImgBackend";
+import {
+  applyTxt2ImgSizeForBackendSwitch,
+  findClosestTxt2ImgCloudSizePreset,
+  formatTxt2ImgSizeLabel,
+  getTxt2ImgCloudSizePresets,
+  parseTxt2ImgCloudSizePresetId,
+  resolveTxt2ImgCloudSizePresetId,
+  txt2ImgSupportsCustomSize,
+} from "@shared/txt2ImgCloudSizePresets";
+import { getTxt2ImgCloudModelSuggestions } from "@shared/txt2ImgCloudModelPresets";
+import {
+  TXT2IMG_OPENAI_QUALITY_OPTIONS,
+  normalizeTxt2ImgCloudQuality,
+  txt2ImgOpenAiQualityLabel,
+} from "@shared/txt2ImgOpenAiQuality";
+import { useSecretStorageHint } from "../composables/useSecretStorageHint";
+import ApiEndpointInput from "./ApiEndpointInput.vue";
+import AppConnectionTestButton from "./AppConnectionTestButton.vue";
 import AppCustomSelect, { type CustomSelectItem } from "./AppCustomSelect.vue";
+import type { ConnectionTestResult } from "../composables/useConnectionTest";
 import AppPullFlashButton, {
   type AppPullFlashDone,
 } from "./AppPullFlashButton.vue";
 import NumericInput from "./NumericInput.vue";
 import PathPickerInput from "./PathPickerInput.vue";
 import SwitchToggle from "./SwitchToggle.vue";
+import { icons } from "../icons";
 import { appAlert } from "../services/appDialog";
 import { resolveDefaultCharacterPortraitCacheDirSync } from "../utils/defaultCacheDirs";
 
@@ -20,6 +45,98 @@ const characterPortraitCacheDir = defineModel<string>(
   "characterPortraitCacheDir",
   { required: true },
 );
+
+const { secretStorageHint } = useSecretStorageHint();
+const showTxt2ImgKey = ref(false);
+
+const txt2imgConnectionFingerprint = computed(() => {
+  const t = modelValue.value.txt2img;
+  return `${t.backend}\0${t.apiBaseUrl.trim()}\0${t.apiKey}`;
+});
+
+const txt2imgBackend = computed(() => modelValue.value.txt2img.backend);
+const txt2imgIsLocalWebUi = computed(
+  () =>
+    txt2imgBackend.value === "a1111" || txt2imgBackend.value === "comfyui",
+);
+
+const txt2imgUsesCloudSizeSelect = computed(
+  () => !txt2ImgSupportsCustomSize(txt2imgBackend.value),
+);
+
+const txt2imgCloudSizeSelectItems = computed((): CustomSelectItem[] =>
+  getTxt2ImgCloudSizePresets(txt2imgBackend.value).map((p) => ({
+    kind: "item",
+    id: `${p.width}x${p.height}`,
+    label: formatTxt2ImgSizeLabel(p.width, p.height),
+  })),
+);
+
+const txt2imgCloudSizeSelectValue = computed(() =>
+  resolveTxt2ImgCloudSizePresetId(
+    txt2imgBackend.value,
+    modelValue.value.txt2img.width,
+    modelValue.value.txt2img.height,
+  ),
+);
+
+const txt2imgCloudSizeDisplayLabel = computed(() => {
+  const parsed = parseTxt2ImgCloudSizePresetId(txt2imgCloudSizeSelectValue.value);
+  if (!parsed) return "";
+  return formatTxt2ImgSizeLabel(parsed.width, parsed.height);
+});
+
+function onTxt2ImgCloudSizeSelect(id: string) {
+  const parsed = parseTxt2ImgCloudSizePresetId(id);
+  if (!parsed) return;
+  modelValue.value.txt2img.width = parsed.width;
+  modelValue.value.txt2img.height = parsed.height;
+}
+
+/** 云端：载入或切换后把宽高对齐到当前服务商的固定尺寸档 */
+watch(
+  () => txt2imgBackend.value,
+  (backend) => {
+    if (txt2ImgSupportsCustomSize(backend)) return;
+    const p = findClosestTxt2ImgCloudSizePreset(
+      backend,
+      modelValue.value.txt2img.width,
+      modelValue.value.txt2img.height,
+    );
+    modelValue.value.txt2img.width = p.width;
+    modelValue.value.txt2img.height = p.height;
+  },
+  { immediate: true },
+);
+
+const txt2imgNeedsApiKey = computed(() =>
+  txt2ImgRequiresApiKey(txt2imgBackend.value),
+);
+const txt2imgShowOpenAiQuality = computed(
+  () =>
+    txt2imgBackend.value === "openai_images" ||
+    txt2imgBackend.value === "openai_compat_images",
+);
+
+const cloudModelSuggestions = computed(() =>
+  getTxt2ImgCloudModelSuggestions(txt2imgBackend.value),
+);
+
+const txt2imgQualitySelectItems = computed((): CustomSelectItem[] =>
+  TXT2IMG_OPENAI_QUALITY_OPTIONS.map((o) => ({
+    kind: "item",
+    id: o.id,
+    label: o.label,
+  })),
+);
+
+const txt2imgQualityDisplayLabel = computed(() =>
+  txt2ImgOpenAiQualityLabel(modelValue.value.txt2img.cloudQuality),
+);
+
+function onTxt2ImgQualitySelect(id: string) {
+  modelValue.value.txt2img.cloudQuality = normalizeTxt2ImgCloudQuality(id);
+}
 
 const txt2imgBackendSelectEmpty: CustomSelectItem[] = [];
 const selectListsEmpty: CustomSelectItem[] = [];
@@ -35,7 +152,7 @@ const txt2imgBackendSelectItems = computed((): CustomSelectItem[] =>
     kind: "item",
     id: p.id,
     label: p.label,
-    description: p.baseUrl,
+    description: p.listDescription?.trim() || p.baseUrl,
   })),
 );
 
@@ -396,9 +513,55 @@ function onTxt2ImgBackendSelect(id: string) {
   const hit = findTxt2ImgBackendPreset(id);
   if (!hit) return;
   modelValue.value.txt2img.backend = hit.id;
-  if (hit.baseUrl.trim()) {
+  if (hit.custom) {
+    modelValue.value.txt2img.apiBaseUrl = "";
+  } else if (hit.baseUrl.trim()) {
     modelValue.value.txt2img.apiBaseUrl = hit.baseUrl;
   }
+  if (isTxt2ImgCloudBackend(hit.id)) {
+    const def =
+      TXT2IMG_DEFAULT_CLOUD_MODEL[
+        hit.id as keyof typeof TXT2IMG_DEFAULT_CLOUD_MODEL
+      ];
+    if (def) modelValue.value.txt2img.cloudModel = def;
+  }
+  const size = applyTxt2ImgSizeForBackendSwitch(hit.id);
+  modelValue.value.txt2img.width = size.width;
+  modelValue.value.txt2img.height = size.height;
+}
+
+async function runTxt2imgConnectionTest(): Promise<ConnectionTestResult | null> {
+  if (txt2imgNeedsApiKey.value && !modelValue.value.txt2img.apiKey.trim()) {
+    await appAlert("请先填写文生图 API 密钥");
+    return null;
+  }
+  if (
+    txt2imgIsLocalWebUi.value &&
+    !modelValue.value.txt2img.apiBaseUrl.trim()
+  ) {
+    await appAlert("请先填写文生图接口地址");
+    return null;
+  }
+  if (
+    txt2imgBackend.value === "openai_compat_images" &&
+    !modelValue.value.txt2img.apiBaseUrl.trim()
+  ) {
+    await appAlert("请先填写 OpenAI 兼容接口地址");
+    return null;
+  }
+  const invoke = window.colorTxt?.ai?.txt2imgInvoke;
+  if (typeof invoke !== "function") {
+    await appAlert("preload 未就绪，请重启应用。");
+    return null;
+  }
+  const r = await invoke({
+    op: "testConnection",
+    backend: modelValue.value.txt2img.backend,
+    apiBaseUrl: modelValue.value.txt2img.apiBaseUrl.trim(),
+    apiKey: modelValue.value.txt2img.apiKey,
+  });
+  if (r.ok && r.op === "testConnection") return { ok: true };
+  return { ok: false, error: r.ok ? "连接失败" : r.error || "连接失败" };
 }
 </script>
 
@@ -420,22 +583,19 @@ function onTxt2ImgBackendSelect(id: string) {
     <template v-if="modelValue.txt2img.enabled">
       <section class="aiSection">
         <h3 class="aiSectionTitle">文生图 API 设置</h3>
-        <p class="aiMasterHint">
-          建议使用本地接口，若云端接口协议一致也可填写公网地址。
-        </p>
         <div class="settingsRow">
           <div class="settingsRowMain settingsRowMain--baseline">
-            <span class="settingsLabel short">接口类型</span>
+            <span class="settingsLabel short">服务商</span>
             <AppCustomSelect
               class="txt2imgBackendSelect"
               :model-value="modelValue.txt2img.backend"
               :display-label="txt2imgBackendDisplayLabel"
-              placeholder="选择接口类型…"
+              placeholder="选择服务商…"
               :fixed-top-items="txt2imgBackendSelectEmpty"
               :scroll-items="txt2imgBackendSelectItems"
               :fixed-bottom-items="txt2imgBackendSelectEmpty"
               :scroll-max-height="220"
-              ariaLabel="文生图接口类型"
+              ariaLabel="文生图服务商"
               @update:model-value="onTxt2ImgBackendSelect"
             />
           </div>
@@ -453,6 +613,81 @@ function onTxt2ImgBackendSelect(id: string) {
             />
           </div>
         </div>
+        <template v-if="txt2imgNeedsApiKey">
+          <div class="settingsRow">
+            <div class="settingsRowMain settingsRowMain--baseline">
+              <span class="settingsLabel short">API 密钥</span>
+              <div class="aiRowField">
+                <div class="settingsPasswordRow aiPasswordRow">
+                  <input
+                    v-model="modelValue.txt2img.apiKey"
+                    class="settingsStretchInput settingsPasswordRow__input"
+                    :type="showTxt2ImgKey ? 'text' : 'password'"
+                    autocomplete="off"
+                    spellcheck="false"
+                    aria-label="文生图 API 密钥"
+                  />
+                  <button
+                    type="button"
+                    class="btn iconOnly"
+                    :title="showTxt2ImgKey ? '隐藏' : '显示'"
+                    :aria-label="showTxt2ImgKey ? '隐藏 API 密钥' : '显示 API 密钥'"
+                    @click="showTxt2ImgKey = !showTxt2ImgKey"
+                  >
+                    <span
+                      class="iconSvg"
+                      v-html="showTxt2ImgKey ? icons.view : icons.viewOff"
+                    />
+                  </button>
+                  <AppConnectionTestButton
+                    class="txt2imgKeyTestBtn"
+                    :fingerprint="txt2imgConnectionFingerprint"
+                    :on-test="runTxt2imgConnectionTest"
+                    title="仅校验接口地址和 API 密钥的有效性，不出图"
+                  />
+                </div>
+              </div>
+            </div>
+            <p class="settingsHint">{{ secretStorageHint }}</p>
+          </div>
+          <div class="settingsRow">
+            <div class="settingsRowMain settingsRowMain--baseline">
+              <span class="settingsLabel short">模型</span>
+              <div class="txt2imgCloudModelRow">
+                <ApiEndpointInput
+                  v-model="modelValue.txt2img.cloudModel"
+                  :suggestions="cloudModelSuggestions"
+                  placeholder="输入模型 ID…"
+                  input-class="txt2imgRowStretchInput txt2imgCloudModelInput"
+                  aria-label="文生图模型"
+                  :scroll-max-height="260"
+                />
+              </div>
+            </div>
+            <p class="aiMasterHint">
+              服务商新增的模型没有出现在列表里时，可手动输入；留空则使用默认模型。
+            </p>
+          </div>
+          <div v-if="txt2imgShowOpenAiQuality" class="settingsRow">
+            <div class="settingsRowMain settingsRowMain--baseline">
+              <span class="settingsLabel short">画质</span>
+              <AppCustomSelect
+                class="txt2imgQualitySelect"
+                :model-value="
+                  normalizeTxt2ImgCloudQuality(modelValue.txt2img.cloudQuality)
+                "
+                :display-label="txt2imgQualityDisplayLabel"
+                placeholder="选择画质…"
+                :fixed-top-items="selectListsEmpty"
+                :scroll-items="txt2imgQualitySelectItems"
+                :fixed-bottom-items="selectListsEmpty"
+                :scroll-max-height="200"
+                ariaLabel="OpenAI 图像画质"
+                @update:model-value="onTxt2ImgQualitySelect"
+              />
+            </div>
+          </div>
+        </template>
         <div v-if="modelValue.txt2img.backend === 'a1111'" class="settingsRow">
           <div class="settingsRowMain settingsRowMain--samplerRow">
             <span class="settingsLabel short">SD 模型</span>
@@ -513,37 +748,56 @@ function onTxt2ImgBackendSelect(id: string) {
 
       <section class="aiSection">
         <h3 class="aiSectionTitle">默认生成参数</h3>
-        <div class="settingsRow">
+        <div v-if="txt2imgUsesCloudSizeSelect" class="settingsRow">
           <div class="settingsRowMain settingsRowMain--baseline">
-            <span class="settingsLabel"
-              >宽度（{{ modelValue.txt2img.width }} px）</span
-            >
-            <NumericInput
-              v-model="modelValue.txt2img.width"
-              :min="64"
-              :max="2048"
-              integer
-              class="numCompact"
-              aria-label="文生图宽度"
+            <span class="settingsLabel short">尺寸</span>
+            <AppCustomSelect
+              class="txt2imgCloudSizeSelect"
+              :model-value="txt2imgCloudSizeSelectValue"
+              :display-label="txt2imgCloudSizeDisplayLabel"
+              placeholder="选择尺寸…"
+              :fixed-top-items="selectListsEmpty"
+              :scroll-items="txt2imgCloudSizeSelectItems"
+              :fixed-bottom-items="selectListsEmpty"
+              :scroll-max-height="240"
+              ariaLabel="文生图尺寸"
+              @update:model-value="onTxt2ImgCloudSizeSelect"
             />
           </div>
         </div>
-        <div class="settingsRow">
-          <div class="settingsRowMain settingsRowMain--baseline">
-            <span class="settingsLabel"
-              >高度（{{ modelValue.txt2img.height }} px）</span
-            >
-            <NumericInput
-              v-model="modelValue.txt2img.height"
-              :min="64"
-              :max="2048"
-              integer
-              class="numCompact"
-              aria-label="文生图高度"
-            />
+        <template v-else>
+          <div class="settingsRow">
+            <div class="settingsRowMain settingsRowMain--baseline">
+              <span class="settingsLabel"
+                >宽度（{{ modelValue.txt2img.width }} px）</span
+              >
+              <NumericInput
+                v-model="modelValue.txt2img.width"
+                :min="64"
+                :max="2048"
+                integer
+                class="numCompact"
+                aria-label="文生图宽度"
+              />
+            </div>
           </div>
-        </div>
-        <div class="settingsRow">
+          <div class="settingsRow">
+            <div class="settingsRowMain settingsRowMain--baseline">
+              <span class="settingsLabel"
+                >高度（{{ modelValue.txt2img.height }} px）</span
+              >
+              <NumericInput
+                v-model="modelValue.txt2img.height"
+                :min="64"
+                :max="2048"
+                integer
+                class="numCompact"
+                aria-label="文生图高度"
+              />
+            </div>
+          </div>
+        </template>
+        <div v-if="txt2imgIsLocalWebUi" class="settingsRow">
           <div class="settingsRowMain settingsRowMain--baseline">
             <span class="settingsLabel"
               >采样步数（{{ modelValue.txt2img.steps }}）</span
@@ -558,7 +812,7 @@ function onTxt2ImgBackendSelect(id: string) {
             />
           </div>
         </div>
-        <div class="settingsRow">
+        <div v-if="txt2imgIsLocalWebUi" class="settingsRow">
           <div class="settingsRowMain settingsRowMain--baseline">
             <span class="settingsLabel"
               >提示词相关性（{{ modelValue.txt2img.cfgScale }}）</span
@@ -598,7 +852,7 @@ function onTxt2ImgBackendSelect(id: string) {
             </div>
           </div>
         </div>
-        <div class="settingsRow">
+        <div v-if="txt2imgIsLocalWebUi" class="settingsRow">
           <div class="settingsRowMain settingsRowMain--baseline">
             <span class="settingsLabel"
               >种子（{{ modelValue.txt2img.seed }}）</span
@@ -738,12 +992,12 @@ function onTxt2ImgBackendSelect(id: string) {
       </section>
 
       <section class="aiSection">
-        <h3 class="aiSectionTitle">通用提示词</h3>
+        <h3 class="aiSectionTitle">通用描述</h3>
         <p class="aiMasterHint">
-          侧栏「生成立绘」时与角色提示词拼接；提交文生图 API 前会自动译为英文。
+          侧栏「生成立绘」时与角色形象拼接。本地 SD 会译成英文 tag；云端接口会整理为自然语言 prompt。
         </p>
         <div class="settingsRow">
-          <span class="settingsLabel">正面提示词</span>
+          <span class="settingsLabel">通用正面描述</span>
           <textarea
             v-model="modelValue.txt2img.defaultPositivePrompt"
             class="settingsStretchTextarea settingsStretchTextarea--multiline"
@@ -753,7 +1007,7 @@ function onTxt2ImgBackendSelect(id: string) {
           />
         </div>
         <div class="settingsRow">
-          <span class="settingsLabel">负面提示词</span>
+          <span class="settingsLabel">通用负面描述（SD 系）</span>
           <textarea
             v-model="modelValue.txt2img.defaultNegativePrompt"
             class="settingsStretchTextarea settingsStretchTextarea--multiline"
@@ -893,7 +1147,9 @@ function onTxt2ImgBackendSelect(id: string) {
   width: 120px;
 }
 
-.txt2imgBackendSelect {
+.txt2imgBackendSelect,
+.txt2imgQualitySelect,
+.txt2imgCloudSizeSelect {
   flex: 1 1 65%;
   min-width: 0;
   max-width: 100%;
@@ -901,6 +1157,23 @@ function onTxt2ImgBackendSelect(id: string) {
 .txt2imgRowStretchInput {
   flex: 1 1 65%;
   min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.txt2imgCloudModelRow {
+  flex: 1 1 65%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.txt2imgCloudModelRow :deep(.apiEndpointInput) {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.txt2imgCloudModelInput {
   width: 100%;
   box-sizing: border-box;
 }
@@ -942,6 +1215,50 @@ function onTxt2ImgBackendSelect(id: string) {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.aiRowField {
+  flex: 1 1 65%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.aiPasswordRow {
+  width: 100%;
+}
+
+.settingsPasswordRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settingsPasswordRow__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settingsHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.iconOnly {
+  padding: 6px;
+  flex-shrink: 0;
+}
+
+.iconSvg :deep(svg) {
+  width: 16px;
+  height: 16px;
+  display: block;
+
+  path {
+    fill: currentColor;
+  }
 }
 
 .txt2imgSamplerToolbar,

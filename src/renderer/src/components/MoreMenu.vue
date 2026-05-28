@@ -341,6 +341,6 @@ onBeforeUnmount(() => {
 }
 
 .moreMenuDividerTight {
-  margin: 6px 0;
+  margin: 4px 0;
 }
 </style>

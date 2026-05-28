@@ -20,7 +20,9 @@ export type CharacterRosterEntry = {
   identity: string;
   bio: string;
   relations: string;
+  /** 角色形象描述（自然语言；历史字段名 promptZh） */
   promptZh: string;
+  /** SD 系高级：负面描述；云端自然语言接口可留空 */
   negativeZh: string;
   /** 检索折叠区持久化正文 */
   retrieveThinkingText: string;

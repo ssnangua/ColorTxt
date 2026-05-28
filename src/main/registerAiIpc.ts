@@ -56,6 +56,10 @@ import {
   runPortraitPromptZhToEn,
   runTxt2ImgToAbsolutePath,
 } from "./aiCharacterPortrait";
+import { adaptPortraitPromptForBackend } from "./aiTxt2ImgPromptAdapt";
+import { testTxt2ImgConnection } from "./aiTxt2ImgTestConnection";
+import { mergeTxt2ImgZhGeneralBeforeSpecific } from "./txt2imgMergeZh";
+import { isTxt2ImgBackend, txt2ImgRequiresApiKey } from "@shared/txt2ImgBackend";
 import {
   appendMessage,
   createThread,
@@ -260,18 +264,6 @@ async function txt2imgListA1111SdModelsAtBase(
       error: e instanceof Error ? e.message : String(e),
     };
   }
-}
-
-/** 文生图：设置里通用片段在前，角色侧栏片段在后，中文顿号衔接 */
-function mergeTxt2ImgZhGeneralBeforeSpecific(
-  general: string,
-  specific: string,
-): string {
-  const g = general.trim();
-  const s = specific.trim();
-  if (!g) return s;
-  if (!s) return g;
-  return `${g}，${s}`;
 }
 
 /** 与渲染进程一轮提问的 requestId 对齐，用于中止正在进行的 embedding fetch */
@@ -723,6 +715,36 @@ export function registerAiIpcHandlers(): void {
       const op = typeof draft.op === "string" ? draft.op : "";
       const apiBaseUrl =
         typeof draft.apiBaseUrl === "string" ? draft.apiBaseUrl.trim() : "";
+      if (op === "testConnection") {
+        const c = await cfg();
+        const backendRaw =
+          typeof draft.backend === "string" ? draft.backend : c.txt2img.backend;
+        if (!isTxt2ImgBackend(backendRaw)) {
+          return { ok: false, error: "无效的文生图 backend" };
+        }
+        const txt2img = { ...c.txt2img, backend: backendRaw };
+        if (typeof draft.apiBaseUrl === "string" && draft.apiBaseUrl.trim()) {
+          txt2img.apiBaseUrl = draft.apiBaseUrl.trim();
+        }
+        if (typeof draft.apiKey === "string") {
+          txt2img.apiKey = draft.apiKey;
+        }
+        if (typeof draft.cloudModel === "string" && draft.cloudModel.trim()) {
+          txt2img.cloudModel = draft.cloudModel.trim();
+        }
+        if (txt2ImgRequiresApiKey(backendRaw) && !txt2img.apiKey.trim()) {
+          return { ok: false, error: "请先填写 API 密钥" };
+        }
+        if (
+          (backendRaw === "a1111" || backendRaw === "comfyui") &&
+          !txt2img.apiBaseUrl.trim()
+        ) {
+          return { ok: false, error: "缺少文生图接口地址" };
+        }
+        const probe = await testTxt2ImgConnection(txt2img);
+        if (!probe.ok) return { ok: false, error: probe.error };
+        return { ok: true, op: "testConnection" };
+      }
       if (!apiBaseUrl) {
         return { ok: false, error: "缺少文生图接口地址" };
       }
@@ -1141,51 +1163,43 @@ export function registerAiIpcHandlers(): void {
         const outputPath = payloadRaw.outputPath;
         const styleZh =
           typeof payloadRaw.styleZh === "string" ? payloadRaw.styleZh : "";
-        const promptZh =
-          typeof payloadRaw.promptZh === "string" ? payloadRaw.promptZh : "";
+        const appearanceZh =
+          typeof payloadRaw.appearanceZh === "string"
+            ? payloadRaw.appearanceZh
+            : typeof payloadRaw.promptZh === "string"
+              ? payloadRaw.promptZh
+              : "";
         const negativeZh =
-          typeof payloadRaw.negativeZh === "string" ? payloadRaw.negativeZh : "";
-        const mergedPromptZh = mergeTxt2ImgZhGeneralBeforeSpecific(
-          c.txt2img.defaultPositivePrompt,
-          promptZh,
-        );
-        const mergedNegativeZh = mergeTxt2ImgZhGeneralBeforeSpecific(
-          c.txt2img.defaultNegativePrompt,
-          negativeZh,
-        );
+          typeof payloadRaw.negativeZh === "string"
+            ? payloadRaw.negativeZh
+            : "";
         if (typeof outputPath !== "string" || !outputPath.trim()) {
           return { ok: false, error: "无效 outputPath" };
         }
-        const tr = await runPortraitPromptZhToEn(c, {
+        const adapted = await adaptPortraitPromptForBackend(c, {
+          backend: c.txt2img.backend,
           styleZh,
-          promptZh: mergedPromptZh,
-          negativeZh: mergedNegativeZh,
+          appearanceZh,
+          negativeZh,
+          defaultPositivePrompt: c.txt2img.defaultPositivePrompt,
+          defaultNegativePrompt: c.txt2img.defaultNegativePrompt,
           signal: ac.signal,
         });
         if (ac.signal.aborted) {
           return { ok: false, error: "已停止" };
         }
-        if ("error" in tr) {
+        if ("error" in adapted) {
           if (ac.signal.aborted) return { ok: false, error: "已停止" };
-          return { ok: false, error: tr.error };
+          return { ok: false, error: adapted.error };
         }
-        const finalPrompt = [tr.style_en, tr.prompt_en]
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .join(", ");
-        if (!finalPrompt) {
-          return {
-            ok: false,
-            error: "请填写画风、通用/角色正面提示词之一（或在设置中填写通用正面）",
-          };
-        }
-        const neg = tr.negative_en.trim();
+        const prompt = adapted.prompt;
+        const negativePrompt =
+          adapted.family === "sd" ? adapted.negativePrompt : "";
         return await runTxt2ImgToAbsolutePath({
           txt2img: c.txt2img,
-          prompt: finalPrompt,
-          negativePrompt: neg,
+          prompt,
+          negativePrompt,
           outputPathAbsolute: outputPath.trim(),
-          aiForTranslate: c,
           signal: ac.signal,
         });
       } finally {

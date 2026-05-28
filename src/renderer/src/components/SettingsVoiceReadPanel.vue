@@ -13,6 +13,10 @@ import {
   type VoiceReadEngineId,
   type VoiceReadSettings,
 } from "../constants/voiceRead";
+import {
+  DASHSCOPE_API_KEY_CONSOLE_URL,
+  DASHSCOPE_PLATFORM_LABEL,
+} from "@shared/apiEndpointPresets";
 import { useSecretStorageHint } from "../composables/useSecretStorageHint";
 import {
   VoiceReadLinePlayer,
@@ -60,8 +64,8 @@ const engineOptions: {
   },
   {
     id: "dashscope",
-    label: "DashScope",
-    description: "高质量云端语音，需要 API 秘钥",
+    label: DASHSCOPE_PLATFORM_LABEL,
+    description: "高质量云端语音，需要 API 密钥",
   },
 ];
 
@@ -77,11 +81,8 @@ const engineDisplayLabel = computed(() => {
   return hit?.label ?? draft.value.engine;
 });
 
-const DASHSCOPE_API_KEY_URL =
-  "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/api-key";
-
 function openDashScopeApiKeyPage() {
-  void window.colorTxt.openExternal(DASHSCOPE_API_KEY_URL);
+  void window.colorTxt.openExternal(DASHSCOPE_API_KEY_CONSOLE_URL);
 }
 
 const previewText = ref("欢迎使用彩读语音朗读试听。");
@@ -276,34 +277,38 @@ const pitchDisabled = computed(
       </div>
 
       <div v-if="draft.engine === 'dashscope'" class="settingsRow">
-        <span class="settingsLabel">API 密钥</span>
-        <div class="settingsPasswordRow">
-          <input
-            id="dsKey"
-            class="settingsStretchInput settingsPasswordRow__input"
-            :type="showDashScopeKey ? 'text' : 'password'"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="输入 DashScope API 密钥"
-            :value="draft.dashscopeApiKey"
-            @input="
-              patchDraft({
-                dashscopeApiKey: ($event.target as HTMLInputElement).value,
-              })
-            "
-          />
-          <button
-            type="button"
-            class="btn iconOnly"
-            :title="showDashScopeKey ? '隐藏' : '显示'"
-            :aria-label="showDashScopeKey ? '隐藏 API 密钥' : '显示 API 密钥'"
-            @click="showDashScopeKey = !showDashScopeKey"
-          >
-            <span
-              class="iconSvg"
-              v-html="showDashScopeKey ? icons.view : icons.viewOff"
-            />
-          </button>
+        <div class="settingsRowMain settingsRowMain--baseline">
+          <span class="settingsLabel short">API 密钥</span>
+          <div class="voiceReadRowField">
+            <div class="settingsPasswordRow voiceReadPasswordRow">
+              <input
+                class="settingsStretchInput settingsPasswordRow__input"
+                :type="showDashScopeKey ? 'text' : 'password'"
+                autocomplete="off"
+                spellcheck="false"
+                :value="draft.dashscopeApiKey"
+                @input="
+                  patchDraft({
+                    dashscopeApiKey: ($event.target as HTMLInputElement).value,
+                  })
+                "
+              />
+              <button
+                type="button"
+                class="btn iconOnly"
+                :title="showDashScopeKey ? '隐藏' : '显示'"
+                :aria-label="
+                  showDashScopeKey ? '隐藏 API 密钥' : '显示 API 密钥'
+                "
+                @click="showDashScopeKey = !showDashScopeKey"
+              >
+                <span
+                  class="iconSvg"
+                  v-html="showDashScopeKey ? icons.view : icons.viewOff"
+                />
+              </button>
+            </div>
+          </div>
         </div>
         <p class="settingsHint">
           从阿里百炼平台
@@ -488,6 +493,16 @@ const pitchDisabled = computed(
   flex: 1 1 65%;
   min-width: 0;
   max-width: 100%;
+}
+
+.voiceReadRowField {
+  flex: 1 1 65%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.voiceReadPasswordRow {
+  width: 100%;
 }
 
 .settingsStretchInput,

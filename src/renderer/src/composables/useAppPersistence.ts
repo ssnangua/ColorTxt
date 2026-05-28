@@ -96,6 +96,10 @@ import {
   mergeAiSkillOverrides,
   mergeAiSkillsEnabled,
 } from "@shared/aiSkills";
+import {
+  normalizeCharacterCardTextureEffect,
+  type CharacterCardTextureEffectId,
+} from "@shared/characterCardTextureEffects";
 
 /** 同步路径优先；仍为空时用主进程 IPC（极早启动 preload 未就绪等） */
 async function resolveDefaultEbookConvertOutputDir(): Promise<string> {
@@ -166,6 +170,8 @@ export function useAppPersistence(deps: {
   ebookConvertOutputDir: Ref<string>;
   /** 角色立绘缓存根目录（绝对路径）；无键时默认 userData/CharacterPortrait */
   characterPortraitCacheDir: Ref<string>;
+  /** 角色卡纹理/全息效果（全局） */
+  characterCardTextureEffect: Ref<CharacterCardTextureEffectId>;
   fileCategory: Ref<string>;
   fileSort: Ref<FileSortMode>;
   fileCategoryCatalog: Ref<FileCategoryDefinition[]>;
@@ -797,6 +803,10 @@ export function useAppPersistence(deps: {
         data.characterPortraitCacheDir.trim();
     }
 
+    deps.characterCardTextureEffect.value = normalizeCharacterCardTextureEffect(
+      data.characterCardTextureEffect,
+    );
+
     deps.fileCategory.value = normalizeCategoryFilter(data.fileCategory);
     deps.fileSort.value = isFileSortMode(data.fileSort)
       ? data.fileSort
@@ -897,6 +907,7 @@ export function useAppPersistence(deps: {
         : undefined,
       ebookConvertOutputDir: deps.ebookConvertOutputDir.value,
       characterPortraitCacheDir: deps.characterPortraitCacheDir.value.trim(),
+      characterCardTextureEffect: deps.characterCardTextureEffect.value,
       fileCategory: deps.fileCategory.value,
       fileSort: deps.fileSort.value,
       fileCategoryCatalog: deps.fileCategoryCatalog.value,
