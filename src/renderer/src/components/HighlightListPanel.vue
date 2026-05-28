@@ -68,7 +68,8 @@ function onRemoveHighlightTermClick(ev: MouseEvent, text: string) {
               size="sm"
               :model-value="item.isGlobal"
               :disabled="false"
-              aria-label="设为全局高亮词"
+              :aria-label="item.isGlobal ? '取消全局高亮词' : '设为全局高亮词'"
+              :title="item.isGlobal ? '取消全局高亮词' : '设为全局高亮词'"
               @update:model-value="emit('toggleGlobalHighlightTerm', item.text, $event)"
             />
           </div>

@@ -5,17 +5,20 @@ withDefaults(
   defineProps<{
     /** 供屏幕阅读器使用；无可见标签时请传入 */
     ariaLabel?: string;
+    /** 鼠标悬停提示文本 */
+    title?: string;
     /** `md` 默认；`sm` 用于侧栏等紧凑区域 */
     size?: "md" | "sm";
     disabled?: boolean;
   }>(),
-  { ariaLabel: "", size: "md", disabled: false },
+  { ariaLabel: "", title: "", size: "md", disabled: false },
 );
 </script>
 
 <template>
   <label
     class="switchToggle"
+    :title="title || undefined"
     :class="{
       'switchToggle--sm': size === 'sm',
       'switchToggle--disabled': disabled,
