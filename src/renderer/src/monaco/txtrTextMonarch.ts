@@ -37,6 +37,12 @@ const LATIN_WORD = new RegExp(
 const NUMBER = /[0-9０-９]+/;
 const SPECIAL_MARKERS = /[·•▪*＊✲❈※☆♡♥○●√✔☑×✘☒]/;
 
+/**
+ * 原文常会遗留单侧引号/括号；跨行状态若无限延续，会把后续整本内容误判为内部文字。
+ * 此值仅作异常恢复边界，正常跨行对白、书名或括号说明不受影响。
+ */
+const TXTR_DELIMITED_CROSS_LINE_MAX_LINES = 32;
+
 /** 在否定字符类中需要转义的闭括号字符 */
 function escapeForNegatedClass(closeChar: string): string {
   if (closeChar === "]") return "\\]";
@@ -76,12 +82,136 @@ function bracketOpenerRules(): monaco.languages.IMonarchLanguageRule[] {
   ];
 }
 
+/**
+ * 跨行引号中不进入嵌套状态，避免闭合内层时恢复旧的外层行计数。
+ * 仅命中同一物理行内的成对开括号；内容继续逐字符分词，以保留高亮词、数字和标点颜色。
+ */
+function inlineBracketRules(): monaco.languages.IMonarchLanguageRule[] {
+  return [
+    [/《(?=[^》\r\n]*》)/, "txtr.punctuation"],
+    [/＜(?=[^＞\r\n]*＞)/, "txtr.punctuation"],
+    [/\((?=[^\)\r\n]*\))/, "txtr.punctuation"],
+    [/（(?=[^）\r\n]*）)/, "txtr.punctuation"],
+    [/\[(?=[^\]\r\n]*\])/, "txtr.punctuation"],
+    [/【(?=[^】\r\n]*】)/, "txtr.punctuation"],
+    [/〖(?=[^〗\r\n]*〗)/, "txtr.punctuation"],
+    [/\{(?=[^\}\r\n]*\})/, "txtr.punctuation"],
+    [/｛(?=[^｝\r\n]*｝)/, "txtr.punctuation"],
+  ];
+}
+
 function tokenInsideDelimited(
   innerToken: "txtr.quoteInner" | "txtr.bracketInner",
   specificToken: string,
   enabled: boolean,
 ): string {
   return enabled ? specificToken : innerToken;
+}
+
+type QuoteBracketMode = "nested" | "inline" | "none";
+
+type DelimitedStateSpec = {
+  name: string;
+  closeMatch: RegExp;
+  closeChar: string;
+  innerToken: "txtr.quoteInner" | "txtr.bracketInner";
+  isQuote?: boolean;
+};
+
+const DELIMITED_STATE_SPECS: readonly DelimitedStateSpec[] = [
+  {
+    name: "stringDouble",
+    closeMatch: /"/,
+    closeChar: '"',
+    innerToken: "txtr.quoteInner",
+    isQuote: true,
+  },
+  {
+    name: "stringCorner",
+    closeMatch: /」/,
+    closeChar: "」",
+    innerToken: "txtr.quoteInner",
+    isQuote: true,
+  },
+  {
+    name: "stringWhite",
+    closeMatch: /』/,
+    closeChar: "』",
+    innerToken: "txtr.quoteInner",
+    isQuote: true,
+  },
+  {
+    name: "stringLdquo",
+    closeMatch: /\u201D/,
+    closeChar: "\u201D",
+    innerToken: "txtr.quoteInner",
+    isQuote: true,
+  },
+  {
+    name: "stringLsquo",
+    closeMatch: /\u2019/,
+    closeChar: "\u2019",
+    innerToken: "txtr.quoteInner",
+    isQuote: true,
+  },
+  {
+    name: "bracketBook",
+    closeMatch: /》/,
+    closeChar: "》",
+    innerToken: "txtr.bracketInner",
+  },
+  {
+    name: "bracketAngleFull",
+    closeMatch: /＞/,
+    closeChar: "＞",
+    innerToken: "txtr.bracketInner",
+  },
+  {
+    name: "bracketParenAscii",
+    closeMatch: /\)/,
+    closeChar: ")",
+    innerToken: "txtr.bracketInner",
+  },
+  {
+    name: "bracketParenFull",
+    closeMatch: /）/,
+    closeChar: "）",
+    innerToken: "txtr.bracketInner",
+  },
+  {
+    name: "bracketSquareAscii",
+    closeMatch: /\]/,
+    closeChar: "]",
+    innerToken: "txtr.bracketInner",
+  },
+  {
+    name: "bracketCjk",
+    closeMatch: /】/,
+    closeChar: "】",
+    innerToken: "txtr.bracketInner",
+  },
+  {
+    name: "bracketFancy",
+    closeMatch: /〗/,
+    closeChar: "〗",
+    innerToken: "txtr.bracketInner",
+  },
+  {
+    name: "bracketCurlyAscii",
+    closeMatch: /\}/,
+    closeChar: "}",
+    innerToken: "txtr.bracketInner",
+  },
+  {
+    name: "bracketCurlyFull",
+    closeMatch: /｝/,
+    closeChar: "｝",
+    innerToken: "txtr.bracketInner",
+  },
+];
+
+function crossLineStateName(stateName: string, line: number): string {
+  return `${stateName}.crossLine.${line}`;
 }
 
 /**
@@ -94,13 +224,25 @@ function rulesInsideDelimited(
   innerToken: "txtr.quoteInner" | "txtr.bracketInner",
   highlightRules: monaco.languages.IMonarchLanguageRule[],
   colorEnabled: ReaderSurfaceColorEnabled,
-  /** 仅 true：在引号内于高亮词之后匹配成对括号开符 */
-  bracketOpenersInQuote = false,
+  /** 引号内括号处理方式：独立嵌套状态、无状态单行着色或不处理 */
+  quoteBracketMode: QuoteBracketMode = "none",
+  /** undefined = 换行即退出；null = 达到跨行恢复边界后清空全部嵌套状态 */
+  crossLineNextState?: string | null,
 ): monaco.languages.IMonarchLanguageRule[] {
+  const newlineRule: monaco.languages.IMonarchLanguageRule =
+    crossLineNextState === undefined
+      ? [/\r?\n/, { token: "", next: "@pop" }]
+      : crossLineNextState === null
+        ? [/\r?\n/, { token: "", next: "@popall" }]
+        : [/\r?\n/, { token: "", switchTo: crossLineNextState }];
   return [
-    [/[\r\n]/, { token: "", next: "@pop" }],
+    newlineRule,
     ...highlightRules,
-    ...(bracketOpenersInQuote ? bracketOpenerRules() : []),
+    ...(quoteBracketMode === "nested"
+      ? bracketOpenerRules()
+      : quoteBracketMode === "inline"
+        ? inlineBracketRules()
+        : []),
     [closeMatch, { token: "txtr.punctuation", next: "@pop" }],
     [
       SPECIAL_MARKERS,
@@ -130,19 +272,20 @@ function rulesInsideDelimited(
         colorEnabled.txtrPunctuation,
       ),
     ],
-    [innerRestRe(closeChar, bracketOpenersInQuote), innerToken],
+    [innerRestRe(closeChar, quoteBracketMode === "nested"), innerToken],
   ];
 }
 
 /**
  * `includeLF: true` 时行尾 \\n 可匹配，未闭合的引号/括号在换行处 @pop（不跨行）。
- * `includeLF: false` 时成对符号可跨行（由设置「引号/括号匹配支持跨行」与「内容上色」共同决定）。
+ * 开启跨行时，状态最多延续 {@link TXTR_DELIMITED_CROSS_LINE_MAX_LINES} 个后续物理行；
+ * 到达边界后强制恢复 root，避免 EPUB/TXT 的单侧符号污染后续整段内容。
  * 标点 token 仅在 root 匹配；引号内为 txtr.quoteInner；成对括号内为 txtr.bracketInner。
  * root 先括号开符再高亮词；引号内先高亮词再括号开符，故高亮词优先于引号内侧、括号开符仍优先于纯引号内兜底。
  */
 export function createTxtrTextMonarchLanguage(
   highlight?: TxtrMonarchHighlightOptions,
-  /** 为 true 时成对引号/括号可跨行（Monarch includeLF: false） */
+  /** 为 true 时成对引号/括号可跨行（有异常恢复边界） */
   delimitedMatchCrossLine = false,
   colorEnabled: ReaderSurfaceColorEnabled = defaultReaderPaletteColorEnabled,
 ): monaco.languages.IMonarchLanguage {
@@ -153,12 +296,40 @@ export function createTxtrTextMonarchLanguage(
   };
   const hlRules = buildTxtrCustomHighlightMonarchRules(hl);
   const crossLineEffective = Boolean(hl.enabled) && delimitedMatchCrossLine;
+  const crossLineQuoteBracketMode: QuoteBracketMode = crossLineEffective
+    ? "inline"
+    : "nested";
   const insideColor = { ...defaultReaderPaletteColorEnabled, ...colorEnabled };
+  const crossLineTokenizerStates: Record<
+    string,
+    monaco.languages.IMonarchLanguageRule[]
+  > = {};
+  if (crossLineEffective) {
+    for (const spec of DELIMITED_STATE_SPECS) {
+      for (
+        let line = 1;
+        line <= TXTR_DELIMITED_CROSS_LINE_MAX_LINES;
+        line += 1
+      ) {
+        crossLineTokenizerStates[crossLineStateName(spec.name, line)] =
+          rulesInsideDelimited(
+            spec.closeMatch,
+            spec.closeChar,
+            spec.innerToken,
+            hlRules,
+            insideColor,
+            spec.isQuote ? "inline" : "none",
+            line === TXTR_DELIMITED_CROSS_LINE_MAX_LINES
+              ? null
+              : crossLineStateName(spec.name, line + 1),
+          );
+      }
+    }
+  }
 
   return {
     defaultToken: "",
-    /** 见文件头注释：仅「内容上色」且开启跨行时为 false */
-    includeLF: !crossLineEffective,
+    includeLF: true,
     tokenizer: {
       root: [
         ...bracketOpenerRules(),
@@ -181,7 +352,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.quoteInner",
         hlRules,
         insideColor,
-        true,
+        crossLineQuoteBracketMode,
+        crossLineEffective
+          ? crossLineStateName("stringDouble", 1)
+          : undefined,
       ),
 
       stringCorner: rulesInsideDelimited(
@@ -190,7 +364,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.quoteInner",
         hlRules,
         insideColor,
-        true,
+        crossLineQuoteBracketMode,
+        crossLineEffective
+          ? crossLineStateName("stringCorner", 1)
+          : undefined,
       ),
 
       stringWhite: rulesInsideDelimited(
@@ -199,7 +376,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.quoteInner",
         hlRules,
         insideColor,
-        true,
+        crossLineQuoteBracketMode,
+        crossLineEffective
+          ? crossLineStateName("stringWhite", 1)
+          : undefined,
       ),
 
       stringLdquo: rulesInsideDelimited(
@@ -208,7 +388,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.quoteInner",
         hlRules,
         insideColor,
-        true,
+        crossLineQuoteBracketMode,
+        crossLineEffective
+          ? crossLineStateName("stringLdquo", 1)
+          : undefined,
       ),
 
       stringLsquo: rulesInsideDelimited(
@@ -217,7 +400,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.quoteInner",
         hlRules,
         insideColor,
-        true,
+        crossLineQuoteBracketMode,
+        crossLineEffective
+          ? crossLineStateName("stringLsquo", 1)
+          : undefined,
       ),
 
       bracketBook: rulesInsideDelimited(
@@ -226,6 +412,8 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective ? crossLineStateName("bracketBook", 1) : undefined,
       ),
 
       bracketAngleFull: rulesInsideDelimited(
@@ -234,6 +422,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective
+          ? crossLineStateName("bracketAngleFull", 1)
+          : undefined,
       ),
 
       bracketParenAscii: rulesInsideDelimited(
@@ -242,6 +434,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective
+          ? crossLineStateName("bracketParenAscii", 1)
+          : undefined,
       ),
 
       bracketParenFull: rulesInsideDelimited(
@@ -250,6 +446,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective
+          ? crossLineStateName("bracketParenFull", 1)
+          : undefined,
       ),
 
       bracketSquareAscii: rulesInsideDelimited(
@@ -258,6 +458,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective
+          ? crossLineStateName("bracketSquareAscii", 1)
+          : undefined,
       ),
 
       bracketCjk: rulesInsideDelimited(
@@ -266,6 +470,8 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective ? crossLineStateName("bracketCjk", 1) : undefined,
       ),
 
       bracketFancy: rulesInsideDelimited(
@@ -274,6 +480,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective
+          ? crossLineStateName("bracketFancy", 1)
+          : undefined,
       ),
 
       bracketCurlyAscii: rulesInsideDelimited(
@@ -282,6 +492,10 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective
+          ? crossLineStateName("bracketCurlyAscii", 1)
+          : undefined,
       ),
 
       bracketCurlyFull: rulesInsideDelimited(
@@ -290,7 +504,12 @@ export function createTxtrTextMonarchLanguage(
         "txtr.bracketInner",
         hlRules,
         insideColor,
+        "none",
+        crossLineEffective
+          ? crossLineStateName("bracketCurlyFull", 1)
+          : undefined,
       ),
+      ...crossLineTokenizerStates,
     },
   };
 }

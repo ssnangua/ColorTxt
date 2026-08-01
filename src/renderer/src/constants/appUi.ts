@@ -108,8 +108,8 @@ export const defaultReaderTheme = "vs";
 export const defaultShowSidebar = true;
 export const defaultMonacoCustomHighlight = true;
 /**
- * 为 true 且开启「内容上色」时，Monarch 成对引号/括号可跨行（includeLF: false）。
- * 为 false 时：换行即退出未闭合的引号/括号状态。
+ * 为 true 且开启「内容上色」时，Monarch 成对引号/括号可跨行。
+ * 为 false 时：换行即退出未闭合的引号/括号状态；开启时也会在异常长的未闭合范围后自动恢复。
  */
 export const defaultTxtrDelimitedMatchCrossLine = true;
 /** 为 true 时在加载文件流中丢弃空行（仅空格/缩进也视为空行） */
