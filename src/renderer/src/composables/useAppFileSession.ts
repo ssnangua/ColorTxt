@@ -1002,23 +1002,40 @@ export function useAppFileSession(deps: {
 
   /**
    * 「刷新文件列表」：重新扫描记录过的顶层文件夹（「选择目录」/拖入文件夹添加的目录），
-   * 把新出现的 txt/电子书并入侧栏列表并落盘。单个加入的文件不会触发目录扫描。
+   * 把新出现的 txt/电子书并入列表，并把扫描成功目录下已不存在的文件从列表移除。
+   * 单个加入的文件不会触发目录扫描；扫描失败/不可达的目录不增也不删。
    */
   async function refreshFileListDirectories(): Promise<
     | { kind: "noRoots" }
     | { kind: "busy" }
-    | { kind: "done"; scannedRoots: number; added: number; failedDirs: string[] }
+    | {
+        kind: "done";
+        scannedRoots: number;
+        added: number;
+        removed: number;
+        failedDirs: string[];
+      }
   > {
     if (!window.colorTxt) {
-      return { kind: "done", scannedRoots: 0, added: 0, failedDirs: [] };
+      return {
+        kind: "done",
+        scannedRoots: 0,
+        added: 0,
+        removed: 0,
+        failedDirs: [],
+      };
     }
     const roots = readRecordedFileRoots();
     if (roots.length === 0) return { kind: "noRoots" };
     if (deps.dirListScanning.value) return { kind: "busy" };
     const unsub = subscribeDirListTxtScan();
     try {
-      const knownBefore = new Set(deps.txtFiles.value.map((f) => f.path));
-      let merged = deps.txtFiles.value.slice();
+      const beforeList = deps.txtFiles.value;
+      const knownBefore = new Set(beforeList.map((f) => f.path));
+      const normPath = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+      /** 扫描成功且本次出现在磁盘上的文件（root → 归一化路径集合，含目录内全部类型） */
+      const scannedOk: Array<{ normRoot: string; freshNorm: Set<string> }> = [];
+      const booksForMerge: TxtFileItem[] = [];
       const touchedPaths: string[] = [];
       const failedDirs: string[] = [];
       let scannedRoots = 0;
@@ -1032,23 +1049,41 @@ export function useAppFileSession(deps: {
           const dirResult = await window.colorTxt.listTxtFilesInDirectory(root);
           scannedRoots += 1;
           const { books } = partitionBookPackPaths(dirResult.files);
+          scannedOk.push({
+            normRoot: normPath(root),
+            freshNorm: new Set(dirResult.files.map((f) => normPath(f.path))),
+          });
           const items = books
             .map((b) => dirResult.files.find((f) => f.path === b.path))
             .filter((x): x is NonNullable<typeof x> => Boolean(x))
             .map(normalizeTxtFileItem);
           for (const it of items) {
             touchedPaths.push(it.path);
+            booksForMerge.push(it);
           }
-          merged = mergeTxtFileLists(merged, items);
         } catch {
           failedDirs.push(root);
         }
       }
+      // 保留：不在任何成功扫描目录下，或仍存在于磁盘上的文件
+      const kept = beforeList.filter((f) => {
+        const fp = normPath(f.path);
+        const isUnderScannedRoot = scannedOk.some((r) =>
+          fp.startsWith(r.normRoot + "/"),
+        );
+        if (!isUnderScannedRoot) return true;
+        return scannedOk.some(
+          (r) =>
+            fp.startsWith(r.normRoot + "/") && r.freshNorm.has(fp),
+        );
+      });
+      const removed = beforeList.length - kept.length;
+      const merged = mergeTxtFileLists(kept, booksForMerge);
       deps.txtFiles.value = merged;
       deps.applyCurrentFileCategoryIfConcrete?.(touchedPaths);
       persistFileListCache();
       const added = touchedPaths.filter((p) => !knownBefore.has(p)).length;
-      return { kind: "done", scannedRoots, added, failedDirs };
+      return { kind: "done", scannedRoots, added, removed, failedDirs };
     } finally {
       unsub();
       deps.dirListScanning.value = false;

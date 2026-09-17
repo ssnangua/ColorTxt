@@ -2127,15 +2127,22 @@ async function onRefreshFileList() {
     appToast("正在扫描中，请稍候…", { kind: "info" });
     return;
   }
+  const { added, removed } = result;
   if (result.failedDirs.length > 0) {
     appToast(
-      `已刷新：新增 ${result.added} 个文件；${result.failedDirs.length} 个目录无法访问`,
+      `已刷新：新增 ${added} 个、移除 ${removed} 个；${result.failedDirs.length} 个目录无法访问`,
       { kind: "warning" },
     );
     return;
   }
-  if (result.added > 0) {
-    appToast(`刷新完成，新增 ${result.added} 个文件`, { kind: "success" });
+  if (added > 0 && removed > 0) {
+    appToast(`刷新完成：新增 ${added} 个、移除 ${removed} 个`, {
+      kind: "success",
+    });
+  } else if (added > 0) {
+    appToast(`刷新完成，新增 ${added} 个文件`, { kind: "success" });
+  } else if (removed > 0) {
+    appToast(`刷新完成，已移除 ${removed} 个失效文件`, { kind: "success" });
   } else {
     appToast("文件列表已是最新", { kind: "info" });
   }
