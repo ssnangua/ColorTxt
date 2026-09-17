@@ -13,3 +13,4 @@ tmp-*.mjs
 tmp-*.wav
 tmp-*.spx
 tmp-*.png
+.build-tmp/
