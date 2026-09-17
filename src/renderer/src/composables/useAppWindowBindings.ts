@@ -767,6 +767,10 @@ export function useAppWindowBindings(deps: {
     if (shouldRestoreSession) {
       await deps.fileSession.tryRestoreSession();
     }
+
+    // 启动后自动刷新一次文件列表（静默，不弹提示）：并入新增文件、剔除已失效文件。
+    // 不 await，避免大目录扫描拖慢启动；失败也不影响启动流程。
+    void deps.fileSession.refreshFileListDirectories().catch(() => {});
   });
 
   onBeforeUnmount(() => {
