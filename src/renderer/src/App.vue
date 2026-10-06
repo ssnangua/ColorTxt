@@ -2115,6 +2115,7 @@ const {
   pickTxtDirectory,
   pickTxtFilesIntoFileList,
   importPathsIntoFileList,
+  refreshFileListDirectories,
   openFilePath,
   openRecentFileFromHistory,
 } = fileSession;
@@ -2135,6 +2136,40 @@ useAppSyncCurrentFileWatch({
 async function onImportDroppedPathsFromList(paths: string[]) {
   readerDropOverlayVisible.value = false;
   await importPathsIntoFileList(paths);
+}
+
+/** 文件列表页签头部「刷新」：重新扫描已添加文件夹，把新文件并入列表 */
+async function onRefreshFileList() {
+  const result = await refreshFileListDirectories();
+  if (result.kind === "noRoots") {
+    appToast("没有可刷新的文件夹：请先通过「选择目录」或拖入文件夹添加书籍", {
+      kind: "info",
+    });
+    return;
+  }
+  if (result.kind === "busy") {
+    appToast("正在扫描中，请稍候…", { kind: "info" });
+    return;
+  }
+  const { added, removed } = result;
+  if (result.failedDirs.length > 0) {
+    appToast(
+      `已刷新：新增 ${added} 个、移除 ${removed} 个；${result.failedDirs.length} 个目录无法访问`,
+      { kind: "warning" },
+    );
+    return;
+  }
+  if (added > 0 && removed > 0) {
+    appToast(`刷新完成：新增 ${added} 个、移除 ${removed} 个`, {
+      kind: "success",
+    });
+  } else if (added > 0) {
+    appToast(`刷新完成，新增 ${added} 个文件`, { kind: "success" });
+  } else if (removed > 0) {
+    appToast(`刷新完成，已移除 ${removed} 个失效文件`, { kind: "success" });
+  } else {
+    appToast("文件列表已是最新", { kind: "info" });
+  }
 }
 
 const footerPathCaption = computed(() => {
@@ -3987,6 +4022,7 @@ useAppShellThemeWatch({
           :format-char-count="formatChapterCharCount"
           :show-edit-chapter-refresh-button="showEditChapterRefreshButton"
           @pick-directory="pickTxtDirectory"
+          @refresh-file-list="onRefreshFileList"
           @pick-files="pickTxtFilesIntoFileList"
           @import-dropped-paths="onImportDroppedPathsFromList"
           @open-file="openFileFromSidebar"

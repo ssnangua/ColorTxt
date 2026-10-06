@@ -230,6 +230,8 @@ const emit = defineEmits<{
   "update:fileSort": [value: FileSortMode];
   "update:fileListViewMode": [value: FileListViewMode];
   pickDirectory: [];
+  /** 文件列表页签：重新扫描已添加文件夹，让新增文件出现在列表 */
+  refreshFileList: [];
   importDroppedPaths: [paths: string[]];
   pickFiles: [];
   openFile: [item: SidebarFileItem];
@@ -1025,6 +1027,15 @@ defineExpose({
           </button>
         </div>
         <div v-if="activeTab === 'files'" class="sidebarHeaderEnd">
+          <button
+            type="button"
+            class="aiReaderSidebarHeaderIconBtn"
+            title="刷新文件列表"
+            aria-label="刷新文件列表"
+            @click="emit('refreshFileList')"
+          >
+            <span class="svg" v-html="icons.refresh" />
+          </button>
           <button class="btn" @click="emit('pickDirectory')">选择目录</button>
           <button
             ref="filesHeaderMoreBtnRef"
