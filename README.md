@@ -204,6 +204,7 @@
 | 小米 MiMo                    | `https://api.xiaomimimo.com/v1`                           |
 | OpenAI                       | `https://api.openai.com/v1`                               |
 | OpenRouter                   | `https://openrouter.ai/api/v1`                            |
+| Atlas Cloud                  | `https://api.atlascloud.ai/v1`                            |
 | Google Gemini（OpenAI 兼容） | `https://generativelanguage.googleapis.com/v1beta/openai` |
 | _自定义 OpenAI 兼容服务_     | _（手动输入接口地址）_                                    |
 
