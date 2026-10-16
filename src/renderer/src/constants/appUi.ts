@@ -113,6 +113,8 @@ export const fontPickerListModeResetEvent =
 export const systemFontFacePinsKey = "colorTxt.ui.systemFontFacePins";
 export const sessionKey = "colorTxt.session";
 export const fileListKey = "colorTxt.file.list";
+/** 「刷新文件列表」要重新扫描的顶层文件夹（用户通过「选择目录」/拖入文件夹添加过） */
+export const fileListRootsKey = "colorTxt.file.listRoots";
 export const recentFilesKey = "colorTxt.recent.files";
 export const fileMetaKey = "colorTxt.file.meta";
 
