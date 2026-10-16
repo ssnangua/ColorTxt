@@ -54,6 +54,7 @@
 | 小米 MiMo | 小米 MiMo | `https://api.xiaomimimo.com/v1` | 已适配（`thinking.type` enabled/disabled） | 需要（**`api-key`** 头，见 **`applyOpenAiCompatAuthHeaders`**） |
 | OpenAI | OpenAI | `https://api.openai.com/v1` | 未单独适配（仅温度） | 需要 |
 | OpenRouter | OpenRouter | `https://openrouter.ai/api/v1` | 已适配（`reasoning.effort`） | 需要 |
+| Requesty | Requesty | `https://router.requesty.ai/v1` | 未单独适配（仅温度） | 需要 |
 | Google Gemini | Google Gemini（OpenAI 兼容） | `https://generativelanguage.googleapis.com/v1beta/openai` | 已适配（`reasoning_effort`） | 需要（Google AI Key） |
 | 其它兼容服务 | 自定义 OpenAI 兼容服务 | （手填，无固定地址） | 未识别时仅温度=1 | 视网关而定 |
 
