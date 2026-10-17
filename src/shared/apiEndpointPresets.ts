@@ -160,6 +160,11 @@ const CHAT_API_PROVIDER_KNOWN_PRESETS: readonly ChatApiProviderPreset[] = [
     deepThinkingAdapted: true,
   },
   {
+    id: "atlascloud",
+    label: "Atlas Cloud",
+    baseUrl: "https://api.atlascloud.ai/v1",
+  },
+  {
     id: "google-gemini",
     label: "Google Gemini（OpenAI 兼容）",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
