@@ -282,6 +282,8 @@ export function useAppReaderUiPrefs(deps: {
     await deps.withChapterListScrollSuppressed(async () => {
       applyNext();
       deps.persistSettings();
+      /** 整文重排前先落地排队的排版改动，避免「换模型 + 未生效排版」叠加两次全书重排 */
+      deps.readerRef.value?.flushPendingTypographyForDisplayChange?.();
       const ok = await deps.stream.applyReaderDisplayFromPhysicalLines(anchor);
       if (!ok) {
         revert();

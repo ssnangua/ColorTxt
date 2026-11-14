@@ -5,6 +5,11 @@ import {
   lineMayMatchChapterPrefilter,
   mandatoryCharsForPattern,
 } from "./chapterTitlePrefilter.ts";
+import { resolveChapterAlignedFocusWindow } from "./readerFocusWindow.ts";
+
+/** 测试用章节标题判定：与内置主规则同形 */
+const isChapterTitle = (line: string): string | null =>
+  /^第[0-9一二三四五六七八九十百千]+章/.test(line) ? line : null;
 import {
   CHAPTER_MATCH_BUILTIN_ALT_PATTERN,
   CHAPTER_MATCH_BUILTIN_MAIN_PATTERN,
@@ -114,5 +119,64 @@ describe("chapter title prefilter", () => {
       ]),
       null,
     );
+  });
+});
+
+describe("focus window boundaries", () => {
+  /** 每章 12 行正文、1 行标题 */
+  function makeChapteredBook(chapters: number, bodyLines = 12): string[] {
+    const out: string[] = [];
+    for (let c = 1; c <= chapters; c += 1) {
+      out.push(`第${c}章 标题`);
+      for (let i = 0; i < bodyLines; i += 1) out.push(`　　第${c}章正文第${i}行。`);
+    }
+    return out;
+  }
+
+  it("never includes a truncated chapter", () => {
+    const lines = makeChapteredBook(40);
+    const w = resolveChapterAlignedFocusWindow(lines, 60, lines.length, { isChapterTitle });
+    assert.ok(w);
+    // 起点必须是章节标题
+    assert.match(lines[w!.startPhysicalLine - 1]!, /^第\d+章 标题$/);
+    // 窗口内出现的每个章节标题，其正文必须完整落在窗口内
+    for (let p = w!.startPhysicalLine; p <= w!.endPhysicalLine; p += 1) {
+      const title = isChapterTitle(lines[p - 1] ?? "");
+      if (!title) continue;
+      let next = p + 1;
+      while (next <= lines.length && !isChapterTitle(lines[next - 1] ?? "")) {
+        next += 1;
+      }
+      const chapterEnd = next - 1;
+      if (chapterEnd > w!.endPhysicalLine && chapterEnd < lines.length) {
+        assert.fail(
+          `window includes a truncated chapter at line ${p} (${title}); window ends at ${w!.endPhysicalLine}`,
+        );
+      }
+    }
+  });
+
+  it("never truncates a chapter in the middle", () => {
+    const lines = makeChapteredBook(40);
+    for (const focus of [1, 5, 60, 200, lines.length]) {
+      const w = resolveChapterAlignedFocusWindow(lines, focus, lines.length, { isChapterTitle });
+      assert.ok(w);
+      // 窗口终点之后若是正文行，说明包含了不完整的下一章
+      const nextLine = lines[w!.endPhysicalLine];
+      if (nextLine != null) {
+        assert.match(
+          nextLine,
+          /^第\d+章 标题$/,
+          `focus ${focus}: window ended mid-chapter at ${JSON.stringify(lines[w!.endPhysicalLine - 1])}`,
+        );
+      }
+    }
+  });
+
+  it("window is empty-safe at file boundaries", () => {
+    assert.equal(resolveChapterAlignedFocusWindow([], 1, 0, { isChapterTitle }), null);
+    const lines = makeChapteredBook(2);
+    const w = resolveChapterAlignedFocusWindow(lines, 1, lines.length, { isChapterTitle });
+    assert.deepEqual(w, { startPhysicalLine: 1, endPhysicalLine: lines.length });
   });
 });

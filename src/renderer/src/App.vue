@@ -1143,6 +1143,16 @@ const stream = useTxtStreamPipeline({
     }
     return null;
   },
+  /**
+   * 首屏分阶段渲染的后台补齐完成：首屏只装了窗口段落，章节表/侧栏搜索等
+   * 都按那段内容算过。全文替换后必须重算章节表并回到同一阅读位置，
+   * 否则会出现「目录只剩当前几章、与正文对不上」。
+   */
+  onStagedDisplayCompleted: async () => {
+    await nextTick();
+    await syncChaptersAfterViewportSettled();
+    readerRef.value?.emitProbeLine?.();
+  },
 });
 
 /** 程序化刷新章节表期间禁止侧栏 watch 抢跑滚动（会与 centerActiveChapterInList 竞态） */

@@ -2,6 +2,7 @@ import { nextTick, type Ref } from "vue";
 import {
   applyLeadIndentFullWidth,
   chapterTitleForDisplay,
+  detectChapterTitle,
 } from "../chapter";
 import type ReaderMain from "../components/ReaderMain.vue";
 import {
@@ -71,6 +72,12 @@ export function useTxtStreamPipeline(deps: {
    * 「先渲染哪一段」——必须覆盖恢复位置，否则恢复时会落到尚未渲染的区间。
    */
   getPendingRestorePhysicalLine?: () => number | null;
+  /**
+   * 首屏分阶段渲染的后台补齐完成（已整文替换）后调用。
+   * 首屏只装了窗口段落，此时章节表/侧栏仍按窗口计算，必须重算一次，
+   * 否则会出现「目录只有当前几章、正文与目录对不上」。
+   */
+  onStagedDisplayCompleted?: () => void | Promise<void>;
 }) {
   const lineSplitter = createPhysicalLineSplitter();
   /** 展示安装代次：切换文件 / 重新格式化会让旧的窗口与后台补齐任务作废 */
@@ -325,6 +332,7 @@ export function useTxtStreamPipeline(deps: {
         physicalLineContents,
         focusPhysicalLine,
         totalPhysical,
+        { isChapterTitle: detectChapterTitle },
       );
       if (window && window.endPhysicalLine - window.startPhysicalLine + 1 < totalPhysical) {
         const stagedOk = await installDisplayWindow(window, restore, generation);
@@ -495,6 +503,9 @@ export function useTxtStreamPipeline(deps: {
     const display = await formatCurrentPhysicalLinesForDisplay();
     if (!display || generation !== displayGeneration) return;
     await installFormattedDisplay(display, anchor);
+    if (generation !== displayGeneration) return;
+    // 全文已就位：重算章节表（首屏阶段那份是按窗口段落算的）
+    await Promise.resolve(deps.onStagedDisplayCompleted?.());
   }
 
   /** 整文格式化（物理行 → 展示行，含替换/转换）；失败返回 null */
