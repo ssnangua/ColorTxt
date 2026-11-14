@@ -44,7 +44,6 @@ import {
   READER_EDITOR_DEFAULT_FONT_SIZE,
   buildReaderEditorCreateOptions,
   buildReaderEditorFontSizeUpdate,
-  buildReaderEditorLineHeightUpdate,
   buildReaderEditorLetterSpacingUpdate,
   buildReaderMonacoModeEditorOptions,
   buildReaderOverviewRulerBorder,
@@ -948,14 +947,17 @@ const smartFormatReviewScopeLabel = computed(() => {
 
 function getDiffEditorOptionsInput(): import("../monaco/readerEditorOptions").ReaderEditorCreateOptionsInput {
   const e = editor.value;
+  // 排版改动合并到帧末执行；Diff 需要的是「最终生效值」而非当前 Monaco 旧值
+  const pending = pendingTypographyUpdate;
   const fontSize =
+    pending?.fontSize ??
     e?.getOption(monaco.editor.EditorOption.fontSize) ??
     READER_EDITOR_DEFAULT_FONT_SIZE;
   return {
     fontSize,
-    lineHeightMultiple,
-    letterSpacingPx: props.letterSpacingPx,
-    fontFamily: currentFontFamily,
+    lineHeightMultiple: pending?.lineHeightMultiple ?? lineHeightMultiple,
+    letterSpacingPx: pending?.letterSpacingPx ?? props.letterSpacingPx,
+    fontFamily: pending?.fontFamily ?? currentFontFamily,
     theme: readerMonacoThemeForAppTheme(lastAppThemeName),
     smoothScrolling: props.monacoSmoothScrolling,
     mouseWheelScrollSensitivity: props.mouseWheelScrollSensitivity,
@@ -1804,6 +1806,11 @@ async function setFullText(
   text: string,
   opts?: { heavy?: boolean; resetScroll?: boolean },
 ) {
+  /**
+   * 待处理的排版改动必须先在**旧模型**上落地：
+   * 等整文替换后再刷会被视口锚点采到新文，且会多触发一次全书折行。
+   */
+  flushTypographyUpdate();
   streamCarriageReturnPending = false;
   const m = model.value;
   const e = editor.value;
@@ -2195,15 +2202,96 @@ function forceOverviewRulerCanvasRepaint() {
   });
 }
 
-function setFontSize(fontSize: number) {
+/**
+ * 字号/行高/字距/字体或窗口宽度变化都会让 Monaco 对**全书**重算折行
+ *（实测 80 万行约 0.7s/次）。连续 Ctrl+滚轮或拖拽窗口边缘会逐事件触发，
+ * 表现就是「每次界面缩放都卡一下」。
+ *
+ * 因此把所有「会触发整书折行」的排版改动合并到同一帧末尾执行：
+ * 连续事件只保留最后一次的值，并且在执行前后保持视口锚点不漂。
+ */
+let pendingTypographyUpdate: {
+  fontSize?: number;
+  lineHeightMultiple?: number;
+  letterSpacingPx?: number;
+  fontFamily?: string;
+} | null = null;
+let typographyFlushRaf: number | null = null;
+
+function scheduleTypographyUpdate(patch: {
+  fontSize?: number;
+  lineHeightMultiple?: number;
+  letterSpacingPx?: number;
+  fontFamily?: string;
+}): void {
+  pendingTypographyUpdate = { ...(pendingTypographyUpdate ?? {}), ...patch };
+  if (typographyFlushRaf != null) return;
+  typographyFlushRaf = requestAnimationFrame(() => {
+    typographyFlushRaf = null;
+    flushTypographyUpdate();
+  });
+}
+
+/** 立即应用待处理的排版改动（切换文件/进入编辑前调用，避免与整文替换交错） */
+function flushTypographyUpdate(): void {
+  if (typographyFlushRaf != null) {
+    cancelAnimationFrame(typographyFlushRaf);
+    typographyFlushRaf = null;
+  }
+  const patch = pendingTypographyUpdate;
+  pendingTypographyUpdate = null;
   const e = editor.value;
-  if (!e) return;
-  e.updateOptions(
-    buildReaderEditorFontSizeUpdate({
-      fontSize,
-      lineHeightMultiple,
-    }),
-  );
+  if (!patch || !e) return;
+
+  const displayAnchor =
+    model.value != null
+      ? captureReaderViewportRestoreAnchor(e, model.value, (l) => l, undefined, {
+          skipLayout: true,
+        })
+      : null;
+
+  const options: Parameters<typeof e.updateOptions>[0] = {};
+  if (patch.fontFamily !== undefined) {
+    currentFontFamily = patch.fontFamily;
+    options.fontFamily = patch.fontFamily;
+  }
+  if (patch.fontSize !== undefined || patch.lineHeightMultiple !== undefined) {
+    const size =
+      patch.fontSize ??
+      e.getOption(monaco.editor.EditorOption.fontSize);
+    const multiple = patch.lineHeightMultiple ?? lineHeightMultiple;
+    if (patch.lineHeightMultiple !== undefined) {
+      lineHeightMultiple = patch.lineHeightMultiple;
+    }
+    Object.assign(
+      options,
+      buildReaderEditorFontSizeUpdate({
+        fontSize: size,
+        lineHeightMultiple: multiple,
+      }),
+    );
+  }
+  if (patch.letterSpacingPx !== undefined) {
+    Object.assign(
+      options,
+      buildReaderEditorLetterSpacingUpdate({
+        letterSpacingPx: patch.letterSpacingPx,
+      }),
+    );
+  }
+  e.updateOptions(options);
+
+  if (displayAnchor) {
+    // 折行行数已变：把锚点行重新放回原字高带，避免缩放后视口跳到别处
+    void restoreViewportToRestoreAnchor(displayAnchor);
+  }
+  emit("layoutViewportRestored");
+}
+
+/** 字号（含派生行高）—— 立即让出 UI，实际重排合并到帧末 */
+function setFontSize(fontSize: number) {
+  if (!editor.value) return;
+  scheduleTypographyUpdate({ fontSize });
   if (smartFormatReviewActive.value) {
     syncDiffEditorTypography();
   }
@@ -2211,15 +2299,8 @@ function setFontSize(fontSize: number) {
 
 function setLineHeightMultiple(multiple: number) {
   lineHeightMultiple = multiple;
-  const e = editor.value;
-  if (!e) return;
-  const fontSize = e.getOption(monaco.editor.EditorOption.fontSize);
-  e.updateOptions(
-    buildReaderEditorLineHeightUpdate({
-      fontSize,
-      lineHeightMultiple,
-    }),
-  );
+  if (!editor.value) return;
+  scheduleTypographyUpdate({ lineHeightMultiple: multiple });
   if (smartFormatReviewActive.value) {
     syncDiffEditorTypography();
   }
@@ -2262,13 +2343,9 @@ async function setLineSpacingPx(px: number): Promise<void> {
 }
 
 function setLetterSpacingPx(px: number) {
-  const e = editor.value;
-  if (!e) return;
-  e.updateOptions(
-    buildReaderEditorLetterSpacingUpdate({
-      letterSpacingPx: px,
-    }),
-  );
+  if (!editor.value) return;
+  // 字距变化同样会让全书重算折行（804k 行实测 ~0.7s），与字号共用帧末合并
+  scheduleTypographyUpdate({ letterSpacingPx: px });
   if (smartFormatReviewActive.value) {
     syncDiffEditorTypography();
   }
@@ -2309,24 +2386,20 @@ async function syncCjkWrapOptimizeFlag(recalcIfChanged: boolean): Promise<void> 
 }
 
 function setFontFamily(fontFamily: string) {
-  const e = editor.value;
-  if (!e) return;
-
-  currentFontFamily = fontFamily;
-  e.updateOptions({ fontFamily: currentFontFamily });
-  if (smartFormatReviewActive.value) {
-    syncDiffEditorTypography();
-  }
+  if (!editor.value) return;
+  scheduleTypographyUpdate({ fontFamily });
 
   // Ensure KingHwa webfont is loaded before applying to avoid fallback flashes.
-  if (currentFontFamily.includes("KingHwa OldSong")) {
-    const fontSize = e.getOption(monaco.editor.EditorOption.fontSize);
+  if (fontFamily.includes("KingHwa OldSong")) {
+    const fontSize =
+      editor.value.getOption(monaco.editor.EditorOption.fontSize);
     void document.fonts?.load(`${fontSize}px "KingHwa OldSong"`).then(() => {
-      e.updateOptions({ fontFamily: currentFontFamily });
-      if (smartFormatReviewActive.value) {
-        syncDiffEditorTypography();
-      }
+      if (!editor.value) return;
+      scheduleTypographyUpdate({ fontFamily });
     });
+  }
+  if (smartFormatReviewActive.value) {
+    syncDiffEditorTypography();
   }
 }
 
@@ -4777,7 +4850,8 @@ onMounted(() => {
     });
     const dLayout = e.onDidLayoutChange(() => {
       flushReaderBackgroundStickyAlign();
-      refreshReadingRulerDecorations();
+      // 阅读尺未启用时 refresh 会立刻 clear 并返回；缩放热路径上省掉这次调用
+      if (isReadingRulerActive()) refreshReadingRulerDecorations();
     });
     window.addEventListener("resize", flushReaderBackgroundStickyAlign);
     const d2 = e.onDidChangeCursorPosition(() => {

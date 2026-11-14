@@ -1128,6 +1128,21 @@ const stream = useTxtStreamPipeline({
     loading.value = false;
     loadingProgressPercent.value = null;
   },
+  /**
+   * 首屏分阶段渲染：优先渲染「上次阅读位置」附近的若干章。
+   * 优先级与流结束时恢复顺序一致：视口锚点 > 物理行 > 视口顶行锚点。
+   */
+  getPendingRestorePhysicalLine: () => {
+    const anchor = pendingRestoreViewportAnchor.value;
+    if (anchor != null) return Math.max(1, Math.floor(anchor.physicalLine));
+    if (pendingRestorePhysicalLine.value != null) {
+      return Math.max(1, Math.floor(pendingRestorePhysicalLine.value));
+    }
+    if (pendingRestoreViewportTopPhysicalLine.value != null) {
+      return Math.max(1, Math.floor(pendingRestoreViewportTopPhysicalLine.value));
+    }
+    return null;
+  },
 });
 
 /** 程序化刷新章节表期间禁止侧栏 watch 抢跑滚动（会与 centerActiveChapterInList 竞态） */

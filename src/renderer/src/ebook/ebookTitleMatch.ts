@@ -9,8 +9,23 @@ import { stripMdLinksFromLine } from "../markdown/markdownLinkShared";
 const RE_SPAN_ID = /<span\s+id="[^"]*"\s*><\/span>/gi;
 const RE_ATX_PREFIX = /^\s{0,3}#{1,6}\s+/;
 
+/**
+ * 取首物理行。阅读器传入的行已按换行切分，绝大多数不含 `\n`；
+ * 此时 `replace + split` 会为每行多分配一个数组（大文件下是主要热点之一），故走快路径。
+ * 无 `\n` 时也不存在 `\r\n` 对，替换为空操作。
+ */
 function firstPhysicalLine(rawLine: string): string {
-  return rawLine.replace(/\r\n/g, "\n").split("\n")[0] ?? rawLine;
+  const nl = rawLine.indexOf("\n");
+  if (nl < 0) return rawLine;
+  if (nl > 0 && rawLine.charCodeAt(nl - 1) === 13) {
+    return rawLine.slice(0, nl - 1);
+  }
+  return rawLine.slice(0, nl);
+}
+
+/** 该行是否可能含 MD 标记（span 锚点 / 链接 / ATX 前缀）；不含则可跳过整条剥离管线 */
+function mayContainMarkup(line: string): boolean {
+  return line.indexOf("<") >= 0 || line.indexOf("[") >= 0 || line.indexOf("#") >= 0;
 }
 
 /** 去掉任意位置 MD 内链 / 外链语法（不展开 label） */
@@ -23,7 +38,10 @@ export function stripAllMdInternalLinksFromLine(line: string): string {
  * 不把 link label 并入标题（避免「标题<a>注</a>）」误匹配）。
  */
 export function plainTextForEbookTitleMatch(rawLine: string): string {
-  let s = firstPhysicalLine(rawLine);
+  const first = firstPhysicalLine(rawLine);
+  // 无 `<`、`[`、`#` 的常见正文行：三步正则剥离均为空操作，只做展示裁剪
+  if (!mayContainMarkup(first)) return chapterTitleForDisplay(first);
+  let s = first;
   s = s.replace(RE_SPAN_ID, "");
   s = s.replace(RE_ATX_PREFIX, "");
   s = stripAllMdInternalLinksFromLine(s);
@@ -35,5 +53,7 @@ export function plainTextForEbookTitleMatch(rawLine: string): string {
  * 目录匹配请用 {@link plainTextForEbookTitleMatch}。
  */
 export function visibleReaderLineFromPhysicalRaw(rawLine: string): string {
-  return firstPhysicalLine(rawLine).replace(RE_SPAN_ID, "");
+  const first = firstPhysicalLine(rawLine);
+  if (first.indexOf("<") < 0) return first;
+  return first.replace(RE_SPAN_ID, "");
 }
