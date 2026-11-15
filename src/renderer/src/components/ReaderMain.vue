@@ -44,7 +44,6 @@ import {
   READER_EDITOR_DEFAULT_FONT_SIZE,
   buildReaderEditorCreateOptions,
   buildReaderEditorFontSizeUpdate,
-  buildReaderEditorLineHeightUpdate,
   buildReaderEditorLetterSpacingUpdate,
   buildReaderMonacoModeEditorOptions,
   buildReaderOverviewRulerBorder,
@@ -948,14 +947,17 @@ const smartFormatReviewScopeLabel = computed(() => {
 
 function getDiffEditorOptionsInput(): import("../monaco/readerEditorOptions").ReaderEditorCreateOptionsInput {
   const e = editor.value;
+  // 排版改动合并到帧末执行；Diff 需要的是「最终生效值」而非当前 Monaco 旧值
+  const pending = pendingTypographyUpdate;
   const fontSize =
+    pending?.fontSize ??
     e?.getOption(monaco.editor.EditorOption.fontSize) ??
     READER_EDITOR_DEFAULT_FONT_SIZE;
   return {
     fontSize,
-    lineHeightMultiple,
-    letterSpacingPx: props.letterSpacingPx,
-    fontFamily: currentFontFamily,
+    lineHeightMultiple: pending?.lineHeightMultiple ?? lineHeightMultiple,
+    letterSpacingPx: pending?.letterSpacingPx ?? props.letterSpacingPx,
+    fontFamily: pending?.fontFamily ?? currentFontFamily,
     theme: readerMonacoThemeForAppTheme(lastAppThemeName),
     smoothScrolling: props.monacoSmoothScrolling,
     mouseWheelScrollSensitivity: props.mouseWheelScrollSensitivity,
@@ -1579,16 +1581,16 @@ watch(
   { deep: true },
 );
 
+/**
+ * 高级换行开关：advanced 折行更精确但更重（80 万行实测数百毫秒）。
+ * 与中文换行优化一起提交到同一个帧末排版事务，只重建一次折行映射。
+ */
 watch(
   () => props.monacoAdvancedWrapping,
   (advanced) => {
-    void applyWrappingLayoutChange(() => {
-      setWrappingStrategyAdvanced(advanced);
-      const next = effectiveCjkWrapOptimize();
-      if (isCjkWrapOptimizeEnabled() !== next) {
-        setCjkWrapOptimizeEnabled(next);
-      }
-      forceWrappingRecalc();
+    scheduleTypographyUpdate({
+      wrappingStrategyAdvanced: advanced,
+      cjkWrapOptimize: effectiveCjkWrapOptimize(),
     });
   },
 );
@@ -1596,14 +1598,14 @@ watch(
 watch(
   () => props.monacoCjkWrapOptimize,
   () => {
-    void syncCjkWrapOptimizeFlag(true);
+    syncCjkWrapOptimizeFlag(true);
   },
 );
 
 watch(
   () => props.lineSpacingPx,
   (px) => {
-    void setLineSpacingPx(px);
+    setLineSpacingPx(px);
   },
 );
 
@@ -1804,6 +1806,11 @@ async function setFullText(
   text: string,
   opts?: { heavy?: boolean; resetScroll?: boolean },
 ) {
+  /**
+   * 待处理的排版改动必须先在**旧模型**上落地：
+   * 等整文替换后再刷会被视口锚点采到新文，且会多触发一次全书折行。
+   */
+  flushTypographyUpdate();
   streamCarriageReturnPending = false;
   const m = model.value;
   const e = editor.value;
@@ -1942,6 +1949,15 @@ async function applyEmbeddedImageAnchors(
   });
   imageViewZoneIds.value = result.zoneIds;
   return result;
+}
+
+/**
+ * 外层切换「压缩空行 / 行首缩进 / 文本转换」会整文重排。
+ * 重排前必须先把排队的排版改动落地：否则会在新旧模型之间夹一次全书折行，
+ * 放大卡顿，且锚点可能采到尚未生效的排版。
+ */
+function flushPendingTypographyForDisplayChange(): void {
+  flushTypographyUpdate();
 }
 
 function clear(opts?: ReaderClearOptions) {
@@ -2195,15 +2211,131 @@ function forceOverviewRulerCanvasRepaint() {
   });
 }
 
-function setFontSize(fontSize: number) {
+/**
+ * 字号/行高/字距/字体或窗口宽度变化都会让 Monaco 对**全书**重算折行
+ *（实测 80 万行约 0.7s/次）。连续 Ctrl+滚轮或拖拽窗口边缘会逐事件触发，
+ * 表现就是「每次界面缩放都卡一下」。
+ *
+ * 因此把所有「会触发整书折行」的排版改动合并到同一帧末尾执行：
+ * 连续事件只保留最后一次的值，并且在执行前后保持视口锚点不漂。
+ */
+let pendingTypographyUpdate: {
+  fontSize?: number;
+  lineHeightMultiple?: number;
+  letterSpacingPx?: number;
+  fontFamily?: string;
+  /** Monaco 换行策略（简单 / 高级） */
+  wrappingStrategyAdvanced?: boolean;
+  /** 中文换行优化开关（需 forceWrappingRecalc 才会重建折行映射） */
+  cjkWrapOptimize?: boolean;
+  /** 段间距（物理行后空隙 px） */
+  lineSpacingPx?: number;
+} | null = null;
+let typographyFlushRaf: number | null = null;
+
+function scheduleTypographyUpdate(patch: {
+  fontSize?: number;
+  lineHeightMultiple?: number;
+  letterSpacingPx?: number;
+  fontFamily?: string;
+  wrappingStrategyAdvanced?: boolean;
+  cjkWrapOptimize?: boolean;
+  lineSpacingPx?: number;
+}): void {
+  pendingTypographyUpdate = { ...(pendingTypographyUpdate ?? {}), ...patch };
+  if (typographyFlushRaf != null) return;
+  typographyFlushRaf = requestAnimationFrame(() => {
+    typographyFlushRaf = null;
+    flushTypographyUpdate();
+  });
+}
+
+/** 立即应用待处理的排版改动（切换文件/进入编辑前调用，避免与整文替换交错） */
+function flushTypographyUpdate(): void {
+  if (typographyFlushRaf != null) {
+    cancelAnimationFrame(typographyFlushRaf);
+    typographyFlushRaf = null;
+  }
+  const patch = pendingTypographyUpdate;
+  pendingTypographyUpdate = null;
   const e = editor.value;
-  if (!e) return;
-  e.updateOptions(
-    buildReaderEditorFontSizeUpdate({
-      fontSize,
-      lineHeightMultiple,
-    }),
-  );
+  if (!patch || !e) return;
+
+  const displayAnchor =
+    model.value != null
+      ? captureReaderViewportRestoreAnchor(e, model.value, (l) => l, undefined, {
+          skipLayout: true,
+        })
+      : null;
+
+  const options: Parameters<typeof e.updateOptions>[0] = {};
+  if (patch.fontFamily !== undefined) {
+    currentFontFamily = patch.fontFamily;
+    options.fontFamily = patch.fontFamily;
+  }
+  if (patch.fontSize !== undefined || patch.lineHeightMultiple !== undefined) {
+    const size =
+      patch.fontSize ??
+      e.getOption(monaco.editor.EditorOption.fontSize);
+    const multiple = patch.lineHeightMultiple ?? lineHeightMultiple;
+    if (patch.lineHeightMultiple !== undefined) {
+      lineHeightMultiple = patch.lineHeightMultiple;
+    }
+    Object.assign(
+      options,
+      buildReaderEditorFontSizeUpdate({
+        fontSize: size,
+        lineHeightMultiple: multiple,
+      }),
+    );
+  }
+  if (patch.letterSpacingPx !== undefined) {
+    Object.assign(
+      options,
+      buildReaderEditorLetterSpacingUpdate({
+        letterSpacingPx: patch.letterSpacingPx,
+      }),
+    );
+  }
+  e.updateOptions(options);
+
+  /**
+   * 换行策略 / 中文换行优化 / 段间距同样要重算全书折行（或全行高），
+   * 一并合并到本帧，避免与字号改动叠加触发多次重排。
+   */
+  if (patch.wrappingStrategyAdvanced !== undefined) {
+    e.updateOptions({
+      wrappingStrategy: patch.wrappingStrategyAdvanced ? "advanced" : "simple",
+    });
+  }
+  if (patch.cjkWrapOptimize !== undefined) {
+    if (isCjkWrapOptimizeEnabled() !== patch.cjkWrapOptimize) {
+      setCjkWrapOptimizeEnabled(patch.cjkWrapOptimize);
+      forceWrappingRecalc();
+    }
+  }
+  if (patch.lineSpacingPx !== undefined) {
+    const next = clampMonacoLineSpacingPx(patch.lineSpacingPx);
+    if (next !== getLineSpacingPx()) {
+      applyMonacoLineSpacingPx(next);
+      if (imageViewZoneIds.value.length > 0) {
+        // 独占行插图已删物理行，段间距改动时同步 ViewZone 底部空隙
+        syncReaderImageViewZonesLineSpacing(e, imageViewZoneIds.value);
+      }
+    }
+  }
+
+  if (displayAnchor) {
+    // 折行行数已变：把锚点行重新放回原字高带，避免缩放后视口跳到别处
+    void restoreViewportToRestoreAnchor(displayAnchor);
+  }
+  emit("layoutViewportRestored");
+}
+
+/** 字号（含派生行高）—— 立即让出 UI，实际重排合并到帧末 */
+function setFontSize(fontSize: number) {
+  if (!editor.value) return;
+  scheduleTypographyUpdate({ fontSize });
   if (smartFormatReviewActive.value) {
     syncDiffEditorTypography();
   }
@@ -2211,73 +2343,39 @@ function setFontSize(fontSize: number) {
 
 function setLineHeightMultiple(multiple: number) {
   lineHeightMultiple = multiple;
-  const e = editor.value;
-  if (!e) return;
-  const fontSize = e.getOption(monaco.editor.EditorOption.fontSize);
-  e.updateOptions(
-    buildReaderEditorLineHeightUpdate({
-      fontSize,
-      lineHeightMultiple,
-    }),
-  );
+  if (!editor.value) return;
+  scheduleTypographyUpdate({ lineHeightMultiple: multiple });
   if (smartFormatReviewActive.value) {
     syncDiffEditorTypography();
   }
 }
 
 /**
- * 仅改布局（折行/段间距等）、不改展示行映射时：按 Monaco 展示行采锚并恢复，
- * 避免 scrollTop 不变导致视口漂；并通知外层重居中章节列表。
+ * 段间距：改变所有物理行高度（大文件同样是一次全量重排）。
+ * 合并到帧末执行，连按快捷键只生效一次。
  */
-async function applyWrappingLayoutChange(
-  work: () => void,
-): Promise<void> {
-  const e = editor.value;
-  const m = model.value;
-  const displayAnchor =
-    e && m
-      ? captureReaderViewportRestoreAnchor(e, m, (displayLine) => displayLine)
-      : null;
-  beginProgrammaticScroll();
-  work();
-  if (displayAnchor) {
-    await restoreViewportToRestoreAnchor(displayAnchor);
-  } else {
-    emitProbeLine(false);
-  }
-  emit("layoutViewportRestored");
-}
-
-async function setLineSpacingPx(px: number): Promise<void> {
+function setLineSpacingPx(px: number): void {
   const next = clampMonacoLineSpacingPx(px);
   if (next === getLineSpacingPx()) return;
-  await applyWrappingLayoutChange(() => {
-    applyMonacoLineSpacingPx(next);
-    const e = editor.value;
-    if (e && imageViewZoneIds.value.length > 0) {
-      // 独占行插图已删物理行，段间距改动时同步 ViewZone 底部空隙
-      syncReaderImageViewZonesLineSpacing(e, imageViewZoneIds.value);
-    }
-  });
+  scheduleTypographyUpdate({ lineSpacingPx: next });
 }
 
 function setLetterSpacingPx(px: number) {
-  const e = editor.value;
-  if (!e) return;
-  e.updateOptions(
-    buildReaderEditorLetterSpacingUpdate({
-      letterSpacingPx: px,
-    }),
-  );
+  if (!editor.value) return;
+  // 字距变化同样会让全书重算折行（804k 行实测 ~0.7s），与字号共用帧末合并
+  scheduleTypographyUpdate({ letterSpacingPx: px });
   if (smartFormatReviewActive.value) {
     syncDiffEditorTypography();
   }
 }
 
+/**
+ * 换行策略切换（简单 / 高级）会让 Monaco 重建全书折行映射。
+ * 与字号等共用帧末合并：advanced 下折行计算更重，连续切换不应逐次重排。
+ */
 function setWrappingStrategyAdvanced(advanced: boolean) {
-  editor.value?.updateOptions({
-    wrappingStrategy: advanced ? "advanced" : "simple",
-  });
+  if (!editor.value) return;
+  scheduleTypographyUpdate({ wrappingStrategyAdvanced: advanced });
 }
 
 function effectiveCjkWrapOptimize(): boolean {
@@ -2294,7 +2392,7 @@ function forceWrappingRecalc() {
   e.updateOptions({ wordBreak: current });
 }
 
-async function syncCjkWrapOptimizeFlag(recalcIfChanged: boolean): Promise<void> {
+function syncCjkWrapOptimizeFlag(recalcIfChanged: boolean): void {
   const next = effectiveCjkWrapOptimize();
   const prev = isCjkWrapOptimizeEnabled();
   if (prev === next) return;
@@ -2302,31 +2400,25 @@ async function syncCjkWrapOptimizeFlag(recalcIfChanged: boolean): Promise<void> 
     setCjkWrapOptimizeEnabled(next);
     return;
   }
-  await applyWrappingLayoutChange(() => {
-    setCjkWrapOptimizeEnabled(next);
-    forceWrappingRecalc();
-  });
+  // 开关只影响折行估算：与字号等排版改动一起在帧末重建，保留视口锚点
+  scheduleTypographyUpdate({ cjkWrapOptimize: next });
 }
 
 function setFontFamily(fontFamily: string) {
-  const e = editor.value;
-  if (!e) return;
-
-  currentFontFamily = fontFamily;
-  e.updateOptions({ fontFamily: currentFontFamily });
-  if (smartFormatReviewActive.value) {
-    syncDiffEditorTypography();
-  }
+  if (!editor.value) return;
+  scheduleTypographyUpdate({ fontFamily });
 
   // Ensure KingHwa webfont is loaded before applying to avoid fallback flashes.
-  if (currentFontFamily.includes("KingHwa OldSong")) {
-    const fontSize = e.getOption(monaco.editor.EditorOption.fontSize);
+  if (fontFamily.includes("KingHwa OldSong")) {
+    const fontSize =
+      editor.value.getOption(monaco.editor.EditorOption.fontSize);
     void document.fonts?.load(`${fontSize}px "KingHwa OldSong"`).then(() => {
-      e.updateOptions({ fontFamily: currentFontFamily });
-      if (smartFormatReviewActive.value) {
-        syncDiffEditorTypography();
-      }
+      if (!editor.value) return;
+      scheduleTypographyUpdate({ fontFamily });
     });
+  }
+  if (smartFormatReviewActive.value) {
+    syncDiffEditorTypography();
   }
 }
 
@@ -4512,6 +4604,7 @@ defineExpose({
   flushStreamCarriageReturn,
   normalizeLastLineLeadIndent,
   clear,
+  flushPendingTypographyForDisplayChange,
   setChapters,
   setTheme,
   setFontSize,
@@ -4777,7 +4870,8 @@ onMounted(() => {
     });
     const dLayout = e.onDidLayoutChange(() => {
       flushReaderBackgroundStickyAlign();
-      refreshReadingRulerDecorations();
+      // 阅读尺未启用时 refresh 会立刻 clear 并返回；缩放热路径上省掉这次调用
+      if (isReadingRulerActive()) refreshReadingRulerDecorations();
     });
     window.addEventListener("resize", flushReaderBackgroundStickyAlign);
     const d2 = e.onDidChangeCursorPosition(() => {

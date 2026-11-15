@@ -25,6 +25,10 @@ import {
   CHAPTER_MATCH_BUILTIN_NUM_ORDERED_PATTERN,
 } from "@shared/chapterMatchBuiltinPatterns";
 import { buildChaptersFromReaderDisplayText } from "./reader/readerDisplayPipeline";
+import {
+  buildChapterTitlePrefilter,
+  lineMayMatchChapterPrefilter,
+} from "./reader/chapterTitlePrefilter";
 
 const BUILTIN_RULE_MAIN_ID = "builtin-main";
 const BUILTIN_RULE_ALT_ID = "builtin-alt";
@@ -32,6 +36,8 @@ const BUILTIN_RULE_NUM_ORDERED_ID = "builtin-num-ordered";
 
 let rulesState: ChapterMatchRule[] = createDefaultChapterRulesInternal();
 let enabledRegexList: RegExp[] = [];
+/** 标题行必要字符预筛（null = 无可用约束，逐行跑正则）；见 {@link rebuildEnabledRegexes} */
+let chapterTitlePrefilter: string | null = null;
 
 function createDefaultChapterRulesInternal(): ChapterMatchRule[] {
   return [
@@ -100,12 +106,14 @@ function cloneChapterMatchRule(r: ChapterMatchRule): ChapterMatchRule {
 
 function rebuildEnabledRegexes(rules: ChapterMatchRule[]) {
   const next: RegExp[] = [];
+  const patterns: string[] = [];
   for (const r of rules) {
     if (!r.enabled) continue;
     const p = r.pattern?.trim();
     if (!p) continue;
     try {
       next.push(new RegExp(p));
+      patterns.push(p);
     } catch {
       throw new Error(
         `规则无效（${r.builtIn ? "内置" : "自定义"}）：正则表达式无法编译`,
@@ -116,6 +124,11 @@ function rebuildEnabledRegexes(rules: ChapterMatchRule[]) {
     throw new Error("至少需要启用一条非空的匹配规则");
   }
   enabledRegexList = next;
+  /**
+   * 预筛字符表：任意能命中规则的标题行必含其中至少一个字符。
+   * 自定义规则推导不出约束时为 null（退化为逐行正则，保证不漏匹配）。
+   */
+  chapterTitlePrefilter = buildChapterTitlePrefilter(patterns);
 }
 
 try {
@@ -131,8 +144,12 @@ export function trimChapterTitle(s: string): string {
 }
 
 /** 侧栏、粘性条等 UI：在 trim 基础上去掉零宽字符，避免符号名为空但数据侧有字的情况 */
+const RE_ZERO_WIDTH = /[​-‍﻿]/;
+
 export function chapterTitleForDisplay(s: string): string {
-  return s.replace(/[\u200b-\u200d\ufeff]/g, "").trim();
+  // 绝大多数展示行不含零宽字符；先探测再替换，省掉大文件下一次整行全局正则遍历
+  if (!RE_ZERO_WIDTH.test(s)) return s.trim();
+  return s.replace(/[​-‍﻿]/g, "").trim();
 }
 
 /** 行首连续空白所占列数（含全角空格等 `\p{White_Space}`），用于阅读器压缩章节行缩进 */
@@ -220,12 +237,29 @@ export function previewChapterExamples(
 }
 
 export function detectChapterTitle(line: string): string | null {
-  const s = line.replace(/\r?\n$/, "");
+  // 末尾换行由源文件切分器处理；仅在确有换行时裁剪，省掉全书逐行的一次正则
+  const last = line.charCodeAt(line.length - 1);
+  const s =
+    last === 10 /* \n */ || last === 13 /* \r */
+      ? line.replace(/\r?\n$/, "")
+      : line;
+  // 预筛：不含任一规则的「必要字符」时，不可能匹配任何一条规则
+  if (
+    chapterTitlePrefilter != null &&
+    !lineMayMatchChapterPrefilter(s, chapterTitlePrefilter)
+  ) {
+    return null;
+  }
   for (const re of enabledRegexList) {
     const m = s.match(re);
     if (m) return matchToTitle(m);
   }
   return null;
+}
+
+/** 当前启用规则的标题行预筛串；null 表示无可用约束（调用方可跳过预筛判断） */
+export function getChapterTitlePrefilter(): string | null {
+  return chapterTitlePrefilter;
 }
 
 export function filterChaptersByMinCharCount(

@@ -1,5 +1,7 @@
 /** 作为“字数”的近似：去掉空白后按 UTF-16 length 计数 */
 export function countCharsForLine(line: string): number {
+  // 章节字数统计对全书逐行调用；无空白行直接返回长度，避免每行分配替换结果
+  if (!/\s/.test(line)) return line.length;
   return line.replace(/\s+/g, "").length;
 }
 

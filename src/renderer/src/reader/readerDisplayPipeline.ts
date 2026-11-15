@@ -7,9 +7,11 @@ import {
   applyLeadIndentFullWidth,
   detectChapterTitle,
   filterChaptersByMinCharCount,
+  getChapterTitlePrefilter,
   physicalOffsetToDisplayOffset,
   type Chapter,
 } from "../chapter";
+import { lineMayMatchChapterPrefilter } from "./chapterTitlePrefilter";
 import { plainTextForEbookTitleMatch, visibleReaderLineFromPhysicalRaw } from "../ebook/ebookTitleMatch";
 import {
   isMdAnchorMetadataOnlyPhysicalLine,
@@ -154,8 +156,12 @@ function detectChapterTitleFromPhysicalLine(
     plainTextForEbookTitleMatch(rawPhysicalLine),
   );
   if (!title) return null;
-  const leadingLabels = ebookHints?.leadingLabels ?? [];
-  if (isEbookFalseChapterTitleFromLeadingLink(title, leadingLabels)) return null;
+  const leadingLabels = ebookHints?.leadingLabels;
+  if (leadingLabels && leadingLabels.length > 0) {
+    if (isEbookFalseChapterTitleFromLeadingLink(title, leadingLabels)) {
+      return null;
+    }
+  }
   return title;
 }
 
@@ -233,26 +239,50 @@ export function collectQualifiedChapterTitlePhysicalLines(
   }
   const floor = Math.max(0, Math.floor(options.minCharCount));
   const qualified = new Set<number>();
-  const sections: { titlePhysicalLine: number; charCount: number }[] = [];
+  const sectionTitleLines: number[] = [];
+  const sectionCharCounts: number[] = [];
   let currentIdx = -1;
   let physicalLine = 0;
+  const strippedLines = ebookHints?.strippedLines;
+  const leadingByPhysicalLine = ebookHints?.leadingByPhysicalLine;
+  const chapterTitlePrefilter = getChapterTitlePrefilter();
 
   for (const rawLine of physicalLines) {
     physicalLine += 1;
-    const blankProbe = ebookHints
-      ? (ebookHints.strippedLines[physicalLine - 1] ?? rawLine)
+    // 本章标扫描与格式化主循环共用：不含任一规则必要字符的常见正文行一定
+    // 匹配不到任何规则，可整段跳过 blank probe / 章节正则匹配。
+    if (
+      chapterTitlePrefilter != null &&
+      !lineMayMatchChapterPrefilter(rawLine, chapterTitlePrefilter)
+    ) {
+      if (currentIdx >= 0) {
+        const shown = options.leadIndentFullWidth
+          ? applyLeadIndentFullWidth(rawLine, { exemptChapterTitle: false })
+          : rawLine;
+        sectionCharCounts[currentIdx]! += countCharsForLine(shown);
+      }
+      continue;
+    }
+    const blankProbe = strippedLines
+      ? (strippedLines[physicalLine - 1] ?? rawLine)
       : rawLine;
     if (isBlankPhysicalLineContent(blankProbe)) continue;
-    const hints = ebookHints
-      ? {
-          leadingLabels:
-            ebookHints.leadingByPhysicalLine.get(physicalLine) ?? [],
-        }
-      : undefined;
-    const title = detectChapterTitleFromPhysicalLine(rawLine, hints);
+    let title: string | null;
+    if (leadingByPhysicalLine) {
+      const leadingLabels = leadingByPhysicalLine.get(physicalLine);
+      title = detectChapterTitleFromPhysicalLine(
+        rawLine,
+        leadingLabels && leadingLabels.length > 0
+          ? { leadingLabels }
+          : undefined,
+      );
+    } else {
+      title = detectChapterTitleFromPhysicalLine(rawLine);
+    }
     if (title) {
-      sections.push({ titlePhysicalLine: physicalLine, charCount: 0 });
-      currentIdx = sections.length - 1;
+      sectionTitleLines.push(physicalLine);
+      sectionCharCounts.push(0);
+      currentIdx = sectionTitleLines.length - 1;
       if (floor <= 0) qualified.add(physicalLine);
       continue;
     }
@@ -260,13 +290,13 @@ export function collectQualifiedChapterTitlePhysicalLines(
       const shown = options.leadIndentFullWidth
         ? applyLeadIndentFullWidth(rawLine, { exemptChapterTitle: false })
         : rawLine;
-      sections[currentIdx]!.charCount += countCharsForLine(shown);
+      sectionCharCounts[currentIdx]! += countCharsForLine(shown);
     }
   }
 
   if (floor <= 0) return qualified;
-  for (const s of sections) {
-    if (s.charCount >= floor) qualified.add(s.titlePhysicalLine);
+  for (let i = 0; i < sectionTitleLines.length; i += 1) {
+    if (sectionCharCounts[i]! >= floor) qualified.add(sectionTitleLines[i]!);
   }
   return qualified;
 }
@@ -572,6 +602,14 @@ export function formatPhysicalPlainTextForReader(
   const lines = normalized.length > 0 ? normalized.split("\n") : [];
   return formatPhysicalLinesForReader(lines, options);
 }
+
+export {
+  READER_FOCUS_WINDOW_SIZE,
+  READER_FOCUS_WINDOW_CHAPTERS_AHEAD,
+  resolveReaderFocusWindow,
+  resolveChapterAlignedFocusWindow,
+  type ReaderFocusWindow,
+} from "./readerFocusWindow";
 
 /** 大文件格式化主循环分块让出 UI（strip 已异步完成） */
 export async function formatPhysicalLinesForReaderAsync(

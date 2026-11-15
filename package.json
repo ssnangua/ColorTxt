@@ -14,7 +14,7 @@
     "preview": "electron-vite preview",
     "typecheck": "vue-tsc --noEmit",
     "lint": "echo \"(no lint configured)\"",
-    "test": "node --experimental-strip-types --test src/shared/voiceReadPunctuationPauses.test.ts src/shared/systemFontFace.test.ts src/main/voiceReadEdgeTtsDrm.test.ts",
+    "test": "node --experimental-strip-types --test src/shared/voiceReadPunctuationPauses.test.ts src/shared/systemFontFace.test.ts src/main/voiceReadEdgeTtsDrm.test.ts src/renderer/src/reader/chapterTitlePrefilter.test.ts",
     "release": "electron-vite build && electron-rebuild -f -w better-sqlite3,opencc && node scripts/prune-pack-deps.mjs && electron-builder --publish always",
     "postinstall": "electron-rebuild -f -w better-sqlite3,opencc && node scripts/patch-nested-sharp-stub.mjs && node scripts/patch-monaco-hover-pointer-below.mjs && node scripts/patch-vite-plugin-monaco-rmdir.mjs && node scripts/patch-xpath-following.mjs"
   },
