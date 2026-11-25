@@ -5,6 +5,12 @@ export type Txt2ImgCloudBackendId = Exclude<
   "a1111" | "comfyui"
 >;
 
+const MINIMAX_H3_IMAGE_MODELS = ["MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"];
+
+export function isMinimaxH3ImageModel(model: string): boolean {
+  return MINIMAX_H3_IMAGE_MODELS.includes(model.trim());
+}
+
 /**
  * 各云端服务商常见文生图模型 id（设置页建议列表，按官方主推 / 新→旧排序）。
  * 用户仍可手动输入未收录的模型；留空 `cloudModel` 时使用 {@link TXT2IMG_DEFAULT_CLOUD_MODEL}。
@@ -22,7 +28,7 @@ export const TXT2IMG_CLOUD_MODEL_SUGGESTIONS: Record<
     "dall-e-2",
   ],
   agnes_images: ["agnes-image-2.1-flash", "agnes-image-2.0-flash"],
-  minimax_images: ["image-01"],
+  minimax_images: [...MINIMAX_H3_IMAGE_MODELS, "image-01"],
   dashscope_wanx: [
     "wan2.6-t2i",
     "wan2.5-t2i-preview",

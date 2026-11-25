@@ -1,9 +1,12 @@
+import { request } from "undici";
 import type { AITxt2ImgConfig } from "@shared/aiTypes";
 import { resolveMinimaxImageApiBase } from "@shared/apiEndpointPresets";
 import {
   minimaxAspectRatio,
+  resolveTxt2ImgSize,
   TXT2IMG_DEFAULT_CLOUD_MODEL,
 } from "@shared/txt2ImgBackend";
+import { isMinimaxH3ImageModel } from "@shared/txt2ImgCloudModelPresets";
 import {
   bufferFromImageUrl,
   errorFromTxt2ImgCatch,
@@ -55,7 +58,69 @@ function firstMinimaxImageUrl(data: Record<string, unknown>): string {
   return "";
 }
 
-/** MiniMax Image：`POST {baseUrl}/image_generation`（baseUrl 含 `/v1`） */
+type H3Response = {
+  data?: { b64_json?: string; error?: { message?: string } }[];
+  error?: { message?: string };
+};
+
+async function fetchH3Image(
+  base: string,
+  key: string,
+  model: string,
+  prompt: string,
+  size: { width: number; height: number },
+  signal?: AbortSignal,
+): Promise<{ ok: true; buffer: Buffer } | { ok: false; error: string }> {
+  // Generation can take ten minutes. Replaying a POST can charge twice.
+  const timeout = 610_000;
+  const { body, statusCode } = await request(`${base}/images/generations`, {
+    method: "POST",
+    idempotent: false,
+    maxRedirections: 0,
+    headersTimeout: timeout,
+    bodyTimeout: timeout,
+    signal,
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      prompt: prompt.trim(),
+      size: `${size.width}x${size.height}`,
+      output_format: "png",
+      response_format: "b64_json",
+    }),
+  });
+
+  const raw = await body.text();
+  let result: H3Response | null;
+  try {
+    result = JSON.parse(raw) as H3Response | null;
+  } catch {
+    return { ok: false, error: `MiniMax HTTP ${statusCode}: invalid JSON` };
+  }
+  if (statusCode !== 200 || result?.error) {
+    return {
+      ok: false,
+      error: result?.error?.message || `MiniMax HTTP ${statusCode}`,
+    };
+  }
+
+  let message = "MiniMax returned no image.";
+  if (Array.isArray(result?.data)) {
+    for (const image of result.data) {
+      if (image?.error) {
+        if (image.error.message) message = image.error.message;
+      } else if (typeof image?.b64_json === "string") {
+        const decoded = decodeMinimaxBase64Image(image.b64_json);
+        if (decoded) return decoded;
+      }
+    }
+  }
+  return { ok: false, error: message };
+}
+
 export async function fetchMinimaxImagesBuffer(
   txt2img: AITxt2ImgConfig,
   prompt: string,
@@ -64,8 +129,16 @@ export async function fetchMinimaxImagesBuffer(
   const keyR = requireTxt2ImgApiKey(txt2img.apiKey, "MiniMax");
   if (!keyR.ok) return keyR;
 
-  const base = resolveMinimaxImageApiBase(txt2img.apiBaseUrl);
   const model = resolveMinimaxModel(txt2img);
+  const base = resolveMinimaxImageApiBase(txt2img.apiBaseUrl, model);
+  if (isMinimaxH3ImageModel(model)) {
+    const size = resolveTxt2ImgSize("minimax_images", txt2img.width, txt2img.height);
+    try {
+      return await fetchH3Image(base, keyR.key, model, prompt, size, signal);
+    } catch (e) {
+      return { ok: false, error: errorFromTxt2ImgCatch(e) };
+    }
+  }
   const aspectRatio = minimaxAspectRatio({
     width: txt2img.width,
     height: txt2img.height,
