@@ -1,3 +1,5 @@
+import { isMinimaxH3ImageModel } from "./txt2ImgCloudModelPresets";
+
 /** 阿里云百炼 / DashScope 平台统一品牌名（对话、语音朗读等） */
 export const DASHSCOPE_PLATFORM_LABEL = "阿里云通义（DashScope）";
 
@@ -193,9 +195,15 @@ export function minimaxApiLikely(baseUrl: string): boolean {
  * MiniMax 文生图 / 测试连接用 Base URL（应含 `/v1`，与对话一致）。
  * 兼容旧配置里仅填主机根（如 `https://api.minimaxi.com`）的情况。
  */
-export function resolveMinimaxImageApiBase(apiBaseUrl: string): string {
+export function resolveMinimaxImageApiBase(apiBaseUrl: string, model = ""): string {
   const custom = normalizeChatPresetBaseUrl(apiBaseUrl);
   const base = custom || MINIMAX_API_BASE_URL;
+  if (isMinimaxH3ImageModel(model)) {
+    if (base === MINIMAX_API_BASE_URL || base === "https://api.minimaxi.com") {
+      return "https://api.minimax.cn/v1";
+    }
+    if (base === "https://api.minimax.cn") return base + "/v1";
+  }
   if (/^https?:\/\/[^/]+$/i.test(base) && minimaxApiLikely(base)) {
     return `${base}/v1`;
   }

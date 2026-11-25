@@ -135,7 +135,8 @@ async function testStability(txt2img: AITxt2ImgConfig): Promise<TestResult> {
 async function testMinimax(txt2img: AITxt2ImgConfig): Promise<TestResult> {
   const keyR = requireTxt2ImgApiKey(txt2img.apiKey, "MiniMax");
   if (!keyR.ok) return keyR;
-  const url = `${resolveMinimaxImageApiBase(txt2img.apiBaseUrl)}/models`;
+  const base = resolveMinimaxImageApiBase(txt2img.apiBaseUrl, txt2img.cloudModel);
+  const url = `${base}/models`;
   try {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${keyR.key}` },
